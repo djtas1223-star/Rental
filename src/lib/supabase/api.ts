@@ -7,6 +7,7 @@ import {
   ComunicadoComitiva, 
   SimilarQuestionResult,
   StatusDemanda,
+  UsuarioAdministrador,
   LogAuditoria
 } from '@/types/database';
 
@@ -138,8 +139,8 @@ export async function submitQuestionamento(payload: {
           impacto: payload.impacto,
           autor_nome: payload.autor_nome.trim() || 'Operador SpreadHunter',
           autor_email: payload.autor_email ? payload.autor_email.trim() : null,
-          status: 'pendente', // Submetido para moderação / aprovação da comitiva
-          apoios_count: 1, // Autor apoia por padrão
+          status: 'pendente',
+          apoios_count: 1,
           visualizacoes: 0
         }
       ])
@@ -150,7 +151,6 @@ export async function submitQuestionamento(payload: {
       return { success: false, error: error.message };
     }
 
-    // Registra log no histórico inicial
     if (data?.id) {
       await supabase.from('historico_atualizacoes').insert([
         {
@@ -174,7 +174,6 @@ export async function submitQuestionamento(payload: {
 export async function searchSimilarQuestionamentos(term: string): Promise<SimilarQuestionResult[]> {
   if (!term || term.trim().length < 3) return [];
   try {
-    // Tenta primeiro pela RPC inteligente de similaridade trigram
     const { data: rpcData, error: rpcError } = await supabase.rpc('buscar_questionamentos_semelhantes', {
       p_termo: term.trim(),
       p_limite: 5
@@ -184,7 +183,6 @@ export async function searchSimilarQuestionamentos(term: string): Promise<Simila
       return rpcData as SimilarQuestionResult[];
     }
 
-    // Fallback para query com ILIKE
     const { data, error } = await supabase
       .from('questionamentos')
       .select('id, titulo, descricao, status, apoios_count')
@@ -203,7 +201,6 @@ export async function toggleApoioQuestionamento(
   identificador: string
 ): Promise<{ success: boolean; apoiado: boolean; novoTotal: number; message: string }> {
   try {
-    // Tenta utilizar a stored procedure registrar_apoio para transação atômica
     const { data, error } = await supabase.rpc('registrar_apoio', {
       p_questionamento_id: questionamentoId,
       p_identificador: identificador
@@ -218,7 +215,6 @@ export async function toggleApoioQuestionamento(
       };
     }
 
-    // Fallback direto via tabelas caso RPC ainda não tenha sido criada
     const { data: existing } = await supabase
       .from('apoios')
       .select('id')
@@ -227,11 +223,9 @@ export async function toggleApoioQuestionamento(
       .single();
 
     if (existing) {
-      // Remove apoio
       await supabase.from('apoios').delete().eq('id', existing.id);
       return { success: true, apoiado: false, novoTotal: 0, message: 'Apoio removido' };
     } else {
-      // Adiciona apoio
       await supabase.from('apoios').insert([
         { questionamento_id: questionamentoId, identificador_eleitor: identificador }
       ]);
@@ -321,6 +315,93 @@ export async function checkIsAdmin(userId: string): Promise<boolean> {
   }
 }
 
+export async function fetchAdministradores(): Promise<UsuarioAdministrador[]> {
+  try {
+    const { data, error } = await supabase
+      .from('usuarios_administradores')
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    if (error || !data) return [];
+    return data as UsuarioAdministrador[];
+  } catch {
+    return [];
+  }
+}
+
+export async function adminCadastrarOuPromoverMembro(payload: {
+  email: string;
+  nome: string;
+  papel: 'admin' | 'moderador';
+  senha?: string;
+}): Promise<{ success: boolean; error?: string; message?: string }> {
+  try {
+    // 1. Tenta criar conta via Supabase Auth se tiver senha fornecida
+    if (payload.senha && payload.senha.length >= 6) {
+      await supabase.auth.signUp({
+        email: payload.email.trim(),
+        password: payload.senha,
+        options: {
+          data: {
+            nome: payload.nome.trim()
+          }
+        }
+      });
+    }
+
+    // 2. Chama RPC para registrar ou promover na tabela de administradores
+    const { data, error } = await supabase.rpc('adicionar_administrador', {
+      p_email: payload.email.trim(),
+      p_nome: payload.nome.trim(),
+      p_papel: payload.papel
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    if (data && !data.success) {
+      return { success: false, error: data.error };
+    }
+
+    await registrarLogAuditoria({
+      acao: 'ADD_ADMIN',
+      entidade: 'usuarios_administradores',
+      detalhes: { email: payload.email, nome: payload.nome, papel: payload.papel }
+    });
+
+    return { success: true, message: data?.message || 'Administrador adicionado com sucesso!' };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Falha ao cadastrar administrador';
+    return { success: false, error: msg };
+  }
+}
+
+export async function adminToggleAtivoMembro(
+  id: string, 
+  novoAtivo: boolean
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('usuarios_administradores')
+      .update({ ativo: novoAtivo })
+      .eq('id', id);
+
+    if (error) return { success: false, error: error.message };
+
+    await registrarLogAuditoria({
+      acao: novoAtivo ? 'ATIVAR_ADMIN' : 'DESATIVAR_ADMIN',
+      entidade: 'usuarios_administradores',
+      entidade_id: id
+    });
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Falha ao alterar status';
+    return { success: false, error: msg };
+  }
+}
+
 export async function adminUpdateQuestionamentoStatus(
   id: string,
   novoStatus: StatusDemanda,
@@ -341,7 +422,6 @@ export async function adminUpdateQuestionamentoStatus(
 
     if (error) return { success: false, error: error.message };
 
-    // Adiciona ao histórico de atualizações
     await supabase.from('historico_atualizacoes').insert([
       {
         questionamento_id: id,
@@ -354,7 +434,6 @@ export async function adminUpdateQuestionamentoStatus(
       }
     ]);
 
-    // Registra auditoria
     await registrarLogAuditoria({
       acao: 'UPDATE_STATUS',
       entidade: 'questionamentos',
@@ -392,7 +471,6 @@ export async function adminAddRespostaRentalHash(payload: {
 
     if (error) return { success: false, error: error.message };
 
-    // Atualiza status do questionamento para 'respondido'
     await supabase
       .from('questionamentos')
       .update({ 
@@ -402,7 +480,6 @@ export async function adminAddRespostaRentalHash(payload: {
       })
       .eq('id', payload.questionamento_id);
 
-    // Registra no histórico
     await supabase.from('historico_atualizacoes').insert([
       {
         questionamento_id: payload.questionamento_id,

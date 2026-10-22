@@ -288,6 +288,47 @@ begin
 end;
 $$;
 
+-- RPC: Gerenciar administradores (adicionar ou promover)
+create or replace function public.adicionar_administrador(
+    p_email text,
+    p_nome text,
+    p_papel text default 'moderador'
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+    v_user_id uuid;
+begin
+    -- Localizar ID do usuário no auth.users
+    select id into v_user_id from auth.users where lower(email) = lower(trim(p_email)) limit 1;
+
+    if v_user_id is null then
+        return jsonb_build_object(
+            'success', false, 
+            'error', 'Usuário com o email ' || p_email || ' ainda não se cadastrou no sistema.'
+        );
+    end if;
+
+    -- Confirmar email automaticamente caso ainda não esteja confirmado
+    update auth.users
+    set email_confirmed_at = coalesce(email_confirmed_at, now())
+    where id = v_user_id;
+
+    -- Insere ou atualiza na tabela de administradores
+    insert into public.usuarios_administradores (id, email, nome, papel, ativo)
+    values (v_user_id, lower(trim(p_email)), p_nome, p_papel, true)
+    on conflict (id) do update set
+        papel = p_papel,
+        nome = p_nome,
+        ativo = true;
+
+    return jsonb_build_object('success', true, 'message', 'Administrador configurado com sucesso!');
+end;
+$$;
+
 --------------------------------------------------------------------------------
 -- ROW LEVEL SECURITY (RLS) POLICIES
 --------------------------------------------------------------------------------
@@ -420,3 +461,24 @@ insert into public.comunicados_comitiva (titulo, slug, resumo, conteudo, autor_n
   now()
 )
 on conflict (slug) do nothing;
+
+-- -----------------------------------------------------------------------------
+-- CONFIGURAÇÃO DO ADMINISTRADOR PRINCIPAL (Thales)
+-- -----------------------------------------------------------------------------
+-- Confirmação imediata de email para arq.thales@me.com caso já exista no auth.users
+update auth.users
+set email_confirmed_at = coalesce(email_confirmed_at, now())
+where lower(email) = 'arq.thales@me.com';
+
+-- Registro automático como Administrador Pleno na tabela da comitiva
+insert into public.usuarios_administradores (id, email, nome, papel, ativo)
+select 
+    id, 
+    email, 
+    'Thales (Administrador)', 
+    'admin', 
+    true
+from auth.users 
+where lower(email) = 'arq.thales@me.com'
+on conflict (id) do update 
+set papel = 'admin', ativo = true;
