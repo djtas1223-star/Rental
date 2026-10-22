@@ -25,18 +25,13 @@ export default function Footer() {
             <h4 className="text-white font-semibold text-sm mb-3">Links Rápidos</h4>
             <ul className="space-y-2 text-sm text-slate-400">
               <li>
-                <Link href="/#demandas" className="hover:text-emerald-400 transition-colors">
-                  Todas as Demandas
+                <Link href="/comunicados" className="hover:text-emerald-400 transition-colors">
+                  Mural de Comunicados e Atas
                 </Link>
               </li>
               <li>
                 <Link href="/nova-demanda" className="hover:text-emerald-400 transition-colors">
-                  Registrar Nova Dúvida
-                </Link>
-              </li>
-              <li>
-                <Link href="/comunicados" className="hover:text-emerald-400 transition-colors">
-                  Mural de Comunicados e Atas
+                  Registrar Nova Demanda
                 </Link>
               </li>
               <li>

@@ -447,7 +447,7 @@ export default function AdminPanel() {
           }`}
         >
           <ListFilter className="w-3.5 h-3.5" />
-          <span>Triagem & Moderação ({demandas.length})</span>
+          <span>Demandas Ativas & Moderação ({demandas.length})</span>
         </button>
 
         <button
@@ -492,7 +492,7 @@ export default function AdminPanel() {
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <h3 className="text-sm font-bold text-slate-900">
-              Demandas em Pauta e Triagem
+              Demandas Ativas da Comitiva (Exclusivo Administração)
             </h3>
             {loadingDemandas && (
               <span className="text-xs text-slate-400 flex items-center gap-1">
