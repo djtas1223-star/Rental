@@ -47,7 +47,7 @@ export default function Header() {
             </Link>
 
             <Link
-              href="/#registrar"
+              href="/nova-demanda"
               className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-3.5 py-2 rounded-lg shadow-sm hover:shadow transition-all"
             >
               <PlusCircle className="w-4 h-4" />

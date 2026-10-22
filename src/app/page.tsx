@@ -9,12 +9,7 @@ import {
   PlusCircle, 
   Bell, 
   AlertCircle, 
-  ThumbsUp, 
-  Building2, 
-  Clock, 
-  ExternalLink,
-  ChevronRight,
-  Database
+  ChevronRight
 } from 'lucide-react';
 import { Categoria, Questionamento, ComunicadoComitiva } from '@/types/database';
 import { 
@@ -26,7 +21,6 @@ import {
 import StatsOverview from '@/components/StatsOverview';
 import QuestionCard from '@/components/QuestionCard';
 import QuestionModal from '@/components/QuestionModal';
-import NewQuestionForm from '@/components/NewQuestionForm';
 import { getVotedQuestionIds } from '@/lib/voter-id';
 
 export default function HomePage() {
@@ -96,17 +90,6 @@ export default function HomePage() {
     }));
   };
 
-  const handleSelectSimilar = (id: string) => {
-    const found = demandas.find((d) => d.id === id);
-    if (found) {
-      setSelectedDemanda(found);
-    } else {
-      // scroll to list
-      const el = document.getElementById('demandas');
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
   return (
     <div className="space-y-12">
       {/* HERO SECTION */}
@@ -127,13 +110,13 @@ export default function HomePage() {
           </p>
 
           <div className="mt-8 flex flex-wrap items-center gap-3">
-            <a
-              href="#registrar"
+            <Link
+              href="/nova-demanda"
               className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold px-5 py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20"
             >
               <PlusCircle className="w-5 h-5" />
               <span>Registrar Dúvida</span>
-            </a>
+            </Link>
 
             <a
               href="#demandas"
@@ -145,7 +128,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Decorative background element */}
+        {/* Elemento visual decorativo */}
         <div className="absolute right-0 bottom-0 translate-x-1/4 translate-y-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
       </section>
 
@@ -267,6 +250,15 @@ export default function HomePage() {
                 ? 'Tente ajustar os filtros de busca para encontrar as demandas desejadas.'
                 : 'Seja o primeiro a registrar uma dúvida ou questionamento para a comitiva.'}
             </p>
+            <div className="pt-2">
+              <Link
+                href="/nova-demanda"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shadow-sm transition-colors"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                <span>Registrar Nova Demanda</span>
+              </Link>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -282,13 +274,6 @@ export default function HomePage() {
           </div>
         )}
       </section>
-
-      {/* FORMULÁRIO DE REGISTRO COM IDENTIFICAÇÃO DE SEMELHANTES */}
-      <NewQuestionForm
-        categorias={categorias}
-        onCreated={loadData}
-        onSelectSimilar={handleSelectSimilar}
-      />
 
       {/* MODAL DE DETALHES */}
       <QuestionModal
