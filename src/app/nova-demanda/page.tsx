@@ -44,7 +44,7 @@ export default function NovaDemandaPage() {
             Registrar Nova Demanda ou Sugestão
           </h1>
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            Sua Sujestão será analisada pela comitiva e consolidada em pautas de reunião formal com a diretoria da RentalHash.
+            Sua Sugestão será analisada pela comitiva e consolidada em pautas de reunião formal com a diretoria da RentalHash.
           </p>
         </div>
       </div>
