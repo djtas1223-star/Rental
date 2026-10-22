@@ -21,7 +21,7 @@ export default function CadastroComitivaPage() {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [confirmaSenha, setConfirmaSenha] = useState('');
-  const [codigoSecreto, setCodigoSecreto] = useState('SPREADHUNTER2026');
+  const [codigoSecreto, setCodigoSecreto] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -197,21 +197,22 @@ export default function CadastroComitivaPage() {
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Código de Convite da Comitiva
+                Código Confidencial de Convite da Comitiva
               </label>
               <div className="relative">
                 <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                 <input
-                  type="text"
+                  type="password"
                   required
                   value={codigoSecreto}
                   onChange={(e) => setCodigoSecreto(e.target.value)}
-                  placeholder="SPREADHUNTER2026"
-                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-emerald-500 outline-none font-mono"
+                  placeholder="Código fornecido pela administração"
+                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
                 />
               </div>
-              <p className="text-[10px] text-slate-400 mt-1">
-                Código de segurança padrão fornecido pela coordenação: <code>SPREADHUNTER2026</code>
+              <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
+                <Lock className="w-3 h-3 text-slate-400" />
+                <span>O código de acesso é restrito e deve ser solicitado diretamente ao administrador da comitiva.</span>
               </p>
             </div>
 

@@ -246,19 +246,8 @@ export default function HomePage() {
             </div>
             <h3 className="font-bold text-slate-800 text-base">Nenhum questionamento encontrado</h3>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              {searchTerm || selectedCategoria !== 'todas' || selectedStatus !== 'todos'
-                ? 'Tente ajustar os filtros de busca para encontrar as demandas desejadas.'
-                : 'Seja o primeiro a registrar uma dúvida ou questionamento para a comitiva.'}
+              Nenhuma demanda encontrada com os filtros selecionados.
             </p>
-            <div className="pt-2">
-              <Link
-                href="/nova-demanda"
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shadow-sm transition-colors"
-              >
-                <PlusCircle className="w-3.5 h-3.5" />
-                <span>Registrar Nova Demanda</span>
-              </Link>
-            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
