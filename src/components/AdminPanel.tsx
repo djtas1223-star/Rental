@@ -48,8 +48,8 @@ export default function AdminPanel() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Admin tabs: 'moderacao' | 'resposta' | 'comunicado' | 'administradores' | 'sql'
-  const [activeTab, setActiveTab] = useState<'moderacao' | 'resposta' | 'comunicado' | 'administradores' | 'sql'>('moderacao');
+  // Admin tabs: 'moderacao' | 'resposta' | 'comunicado' | 'administradores'
+  const [activeTab, setActiveTab] = useState<'moderacao' | 'resposta' | 'comunicado' | 'administradores'>('moderacao');
 
   // Demands state
   const [demandas, setDemandas] = useState<Questionamento[]>([]);
@@ -484,18 +484,6 @@ export default function AdminPanel() {
         >
           <Users className="w-3.5 h-3.5" />
           <span>Gestão de Administradores ({administradores.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('sql')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors ml-auto ${
-            activeTab === 'sql'
-              ? 'bg-slate-800 text-white'
-              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-          }`}
-        >
-          <Database className="w-3.5 h-3.5" />
-          <span>Instruções SQL</span>
         </button>
       </div>
 
@@ -964,36 +952,6 @@ export default function AdminPanel() {
                 </table>
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 5: SQL MIGRATIONS & SUPABASE GUIDE */}
-      {activeTab === 'sql' && (
-        <div className="space-y-4">
-          <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-900">
-            <h4 className="font-bold mb-1">Comando Rápido para Ativação do Administrador (Thales)</h4>
-            <p>
-              Execute o bloco abaixo no SQL Editor do Supabase para confirmar o email de <code>arq.thales@me.com</code> e conceder acesso total:
-            </p>
-            <pre className="p-3 bg-slate-900 text-emerald-400 rounded-xl font-mono text-[11px] mt-2 overflow-x-auto">
-{`-- Confirmar email e promover arq.thales@me.com
-update auth.users
-set email_confirmed_at = coalesce(email_confirmed_at, now())
-where lower(email) = 'arq.thales@me.com';
-
-insert into public.usuarios_administradores (id, email, nome, papel, ativo)
-select 
-    id, 
-    email, 
-    'Thales (Administrador)', 
-    'admin', 
-    true
-from auth.users 
-where lower(email) = 'arq.thales@me.com'
-on conflict (id) do update 
-set papel = 'admin', ativo = true;`}
-            </pre>
           </div>
         </div>
       )}
