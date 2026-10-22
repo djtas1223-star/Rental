@@ -302,76 +302,94 @@ alter table public.usuarios_administradores enable row level security;
 alter table public.logs_auditoria enable row level security;
 
 -- Categorias
+drop policy if exists "Categorias são visíveis publicamente" on public.categorias;
 create policy "Categorias são visíveis publicamente" 
     on public.categorias for select using (true);
 
+drop policy if exists "Apenas administradores gerenciam categorias" on public.categorias;
 create policy "Apenas administradores gerenciam categorias" 
     on public.categorias for all using (public.is_admin());
 
 -- Questionamentos
+drop policy if exists "Público visualiza questionamentos aprovados e ativos" on public.questionamentos;
 create policy "Público visualiza questionamentos aprovados e ativos" 
     on public.questionamentos for select 
     using (status in ('em_analise', 'encaminhado', 'respondido', 'concluido') or public.is_admin());
 
+drop policy if exists "Público pode submeter novos questionamentos" on public.questionamentos;
 create policy "Público pode submeter novos questionamentos" 
     on public.questionamentos for insert 
     with check (true);
 
+drop policy if exists "Administradores gerenciam questionamentos" on public.questionamentos;
 create policy "Administradores gerenciam questionamentos" 
     on public.questionamentos for all 
     using (public.is_admin());
 
 -- Apoios
+drop policy if exists "Público pode visualizar apoios" on public.apoios;
 create policy "Público pode visualizar apoios" 
     on public.apoios for select using (true);
 
+drop policy if exists "Público pode registrar apoios" on public.apoios;
 create policy "Público pode registrar apoios" 
     on public.apoios for insert with check (true);
 
+drop policy if exists "Público pode remover seu próprio apoio ou admin gerenciar" on public.apoios;
 create policy "Público pode remover seu próprio apoio ou admin gerenciar" 
     on public.apoios for delete 
     using (public.is_admin() or identificador_eleitor is not null);
 
 -- Histórico de Atualizações
+drop policy if exists "Público pode visualizar atualizações marcadas como públicas" on public.historico_atualizacoes;
 create policy "Público pode visualizar atualizações marcadas como públicas" 
     on public.historico_atualizacoes for select 
     using (publico = true or public.is_admin());
 
+drop policy if exists "Apenas administradores gerenciam histórico" on public.historico_atualizacoes;
 create policy "Apenas administradores gerenciam histórico" 
     on public.historico_atualizacoes for all 
     using (public.is_admin());
 
 -- Respostas RentalHash
+drop policy if exists "Respostas oficiais são públicas" on public.respostas_rentalhash;
 create policy "Respostas oficiais são públicas" 
     on public.respostas_rentalhash for select using (true);
 
+drop policy if exists "Apenas administradores inserem/alteram respostas" on public.respostas_rentalhash;
 create policy "Apenas administradores inserem/alteram respostas" 
     on public.respostas_rentalhash for all 
     using (public.is_admin());
 
 -- Comunicados da Comitiva
+drop policy if exists "Comunicados publicados são públicos" on public.comunicados_comitiva;
 create policy "Comunicados publicados são públicos" 
     on public.comunicados_comitiva for select 
     using (publicado = true or public.is_admin());
 
+drop policy if exists "Apenas administradores gerenciam comunicados" on public.comunicados_comitiva;
 create policy "Apenas administradores gerenciam comunicados" 
     on public.comunicados_comitiva for all 
     using (public.is_admin());
 
 -- Usuários Administradores
+drop policy if exists "Usuários podem consultar seu próprio status de admin" on public.usuarios_administradores;
 create policy "Usuários podem consultar seu próprio status de admin" 
     on public.usuarios_administradores for select 
     using (auth.uid() = id or public.is_admin());
 
+drop policy if exists "Apenas administradores gerenciam outros administradores" on public.usuarios_administradores;
 create policy "Apenas administradores gerenciam outros administradores" 
     on public.usuarios_administradores for all 
     using (public.is_admin());
 
 -- Logs de Auditoria
+drop policy if exists "Apenas administradores visualizam logs de auditoria" on public.logs_auditoria;
 create policy "Apenas administradores visualizam logs de auditoria" 
     on public.logs_auditoria for select 
     using (public.is_admin());
 
+drop policy if exists "Inserção de logs permitida" on public.logs_auditoria;
 create policy "Inserção de logs permitida" 
     on public.logs_auditoria for insert 
     with check (true);
