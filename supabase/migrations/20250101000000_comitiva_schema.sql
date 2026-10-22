@@ -329,6 +329,50 @@ begin
 end;
 $$;
 
+-- RPC: Auto-cadastro na página secreta de novos membros
+create or replace function public.auto_cadastro_membro_comitiva(
+    p_email text,
+    p_nome text,
+    p_codigo_secreto text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+    v_user_id uuid;
+begin
+    -- Validação do código de acesso
+    if trim(p_codigo_secreto) != 'SPREADHUNTER2026' 
+       and trim(p_codigo_secreto) != 'SPREADHUNTER2025' 
+       and trim(p_codigo_secreto) != 'RENTAL2026' then
+        return jsonb_build_object('success', false, 'error', 'Código de segurança de convite inválido.');
+    end if;
+
+    -- Localizar ID do usuário recém-criado no auth.users
+    select id into v_user_id from auth.users where lower(email) = lower(trim(p_email)) limit 1;
+
+    if v_user_id is null then
+        return jsonb_build_object('success', false, 'error', 'Conta ainda não encontrada no sistema de autenticação.');
+    end if;
+
+    -- Confirmação automática de email para liberação de login
+    update auth.users
+    set email_confirmed_at = coalesce(email_confirmed_at, now())
+    where id = v_user_id;
+
+    -- Inserção na tabela de administradores/equipe com papel inicial de moderador
+    insert into public.usuarios_administradores (id, email, nome, papel, ativo)
+    values (v_user_id, lower(trim(p_email)), p_nome, 'moderador', true)
+    on conflict (id) do update set
+        nome = p_nome,
+        ativo = true;
+
+    return jsonb_build_object('success', true, 'message', 'Cadastro realizado com sucesso! Sua conta está liberada para login.');
+end;
+$$;
+
 --------------------------------------------------------------------------------
 -- ROW LEVEL SECURITY (RLS) POLICIES
 --------------------------------------------------------------------------------

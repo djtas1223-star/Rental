@@ -33,6 +33,7 @@ import {
   fetchAdministradores,
   adminCadastrarOuPromoverMembro,
   adminToggleAtivoMembro,
+  adminAlterarPapelMembro,
   checkIsAdmin
 } from '@/lib/supabase/api';
 import { Questionamento, StatusDemanda, UsuarioAdministrador } from '@/types/database';
@@ -278,6 +279,21 @@ export default function AdminPanel() {
         loadAdministradores();
       } else {
         alert(res.error || 'Erro ao alterar status');
+      }
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleAlterarPapelAdmin = async (id: string, novoPapel: 'admin' | 'moderador') => {
+    try {
+      const res = await adminAlterarPapelMembro(id, novoPapel);
+      if (res.success) {
+        setActionSuccess(`Permissão alterada para ${novoPapel.toUpperCase()} com sucesso!`);
+        loadAdministradores();
+        setTimeout(() => setActionSuccess(null), 3000);
+      } else {
+        alert(res.error || 'Erro ao alterar papel');
       }
     } catch (err: any) {
       alert(err.message);
@@ -736,6 +752,42 @@ export default function AdminPanel() {
       {/* TAB 4: GESTÃO DE ADMINISTRADORES */}
       {activeTab === 'administradores' && (
         <div className="space-y-8 max-w-4xl">
+          {/* Card com Link Secreto para Convites */}
+          <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-900 text-white rounded-2xl p-5 sm:p-6 shadow-md border border-emerald-900/40">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 mb-2">
+                  <ShieldCheck className="w-3.5 h-3.5" /> Página Secreta de Cadastro Ativa
+                </span>
+                <h4 className="text-base font-bold text-white">
+                  Envie este link para outros membros se cadastrarem:
+                </h4>
+                <p className="text-xs text-slate-300 mt-1">
+                  Membros cadastrados aparecem nesta lista para você promover a Administrador.
+                </p>
+                <div className="mt-2 text-xs font-mono bg-black/40 px-3 py-1.5 rounded-lg border border-white/10 inline-block text-emerald-300">
+                  /cadastro-comitiva <span className="text-slate-400 font-sans ml-2">(Código: SPREADHUNTER2026)</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const url = `${window.location.origin}/cadastro-comitiva`;
+                    navigator.clipboard.writeText(url);
+                    setActionSuccess('Link copiado para a área de transferência!');
+                    setTimeout(() => setActionSuccess(null), 3000);
+                  }}
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-xs font-bold rounded-xl transition-colors shadow-sm flex items-center gap-1.5"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copiar Link Secreto</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Formulário para Adicionar Administrador */}
           <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-5 sm:p-6">
             <div className="flex items-center gap-2 mb-4">
@@ -872,16 +924,39 @@ export default function AdminPanel() {
                           )}
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <button
-                            onClick={() => handleToggleAtivoAdmin(admin.id, admin.ativo)}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors ${
-                              admin.ativo
-                                ? 'text-amber-700 hover:bg-amber-50 border border-amber-200'
-                                : 'text-emerald-700 hover:bg-emerald-50 border border-emerald-200'
-                            }`}
-                          >
-                            {admin.ativo ? 'Desativar' : 'Reativar'}
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            {admin.papel === 'moderador' ? (
+                              <button
+                                type="button"
+                                onClick={() => handleAlterarPapelAdmin(admin.id, 'admin')}
+                                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 transition-colors"
+                                title="Promover usuário a Administrador Pleno"
+                              >
+                                ⭐ Promover a Admin
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleAlterarPapelAdmin(admin.id, 'moderador')}
+                                className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 transition-colors"
+                                title="Mudar papel para moderador"
+                              >
+                                Rebaixar a Moderador
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => handleToggleAtivoAdmin(admin.id, admin.ativo)}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors ${
+                                admin.ativo
+                                  ? 'text-amber-700 hover:bg-amber-50 border border-amber-200'
+                                  : 'text-emerald-700 hover:bg-emerald-50 border border-emerald-200'
+                              }`}
+                            >
+                              {admin.ativo ? 'Desativar' : 'Reativar'}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

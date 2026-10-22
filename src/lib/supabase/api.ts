@@ -402,6 +402,83 @@ export async function adminToggleAtivoMembro(
   }
 }
 
+export async function adminAlterarPapelMembro(
+  id: string,
+  novoPapel: 'admin' | 'moderador'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('usuarios_administradores')
+      .update({ papel: novoPapel })
+      .eq('id', id);
+
+    if (error) return { success: false, error: error.message };
+
+    await registrarLogAuditoria({
+      acao: novoPapel === 'admin' ? 'PROMOVER_ADMIN' : 'REBAIXAR_MODERADOR',
+      entidade: 'usuarios_administradores',
+      entidade_id: id,
+      detalhes: { novoPapel }
+    });
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Falha ao alterar permissão';
+    return { success: false, error: msg };
+  }
+}
+
+export async function autoCadastroMembro(payload: {
+  nome: string;
+  email: string;
+  senha: string;
+  codigoSecreto: string;
+}): Promise<{ success: boolean; error?: string; message?: string }> {
+  try {
+    // 1. Cria a conta no Supabase Auth
+    const { data: authData, error: authErr } = await supabase.auth.signUp({
+      email: payload.email.trim(),
+      password: payload.senha,
+      options: {
+        data: {
+          nome: payload.nome.trim()
+        }
+      }
+    });
+
+    if (authErr && !authErr.message.includes('User already registered')) {
+      return { success: false, error: authErr.message };
+    }
+
+    // 2. Chama a RPC para confirmação e inserção na tabela de administradores
+    const { data: rpcData, error: rpcErr } = await supabase.rpc('auto_cadastro_membro_comitiva', {
+      p_email: payload.email.trim(),
+      p_nome: payload.nome.trim(),
+      p_codigo_secreto: payload.codigoSecreto.trim()
+    });
+
+    if (rpcErr) {
+      // Fallback: se RPC não estiver instalada ainda, tenta login direto
+      return { 
+        success: true, 
+        message: 'Cadastro no sistema de autenticação recebido. O administrador precisará liberar sua conta no painel.' 
+      };
+    }
+
+    if (rpcData && !rpcData.success) {
+      return { success: false, error: rpcData.error };
+    }
+
+    return { 
+      success: true, 
+      message: rpcData?.message || 'Conta criada com sucesso! Você já pode fazer login ou aguardar a promoção.' 
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Erro ao realizar cadastro';
+    return { success: false, error: msg };
+  }
+}
+
 export async function adminUpdateQuestionamentoStatus(
   id: string,
   novoStatus: StatusDemanda,
