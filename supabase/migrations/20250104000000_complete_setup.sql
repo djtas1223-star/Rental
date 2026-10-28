@@ -428,8 +428,9 @@ on storage.objects for select
 using (bucket_id = 'comprovantes');
 
 -- ----------------------------------------------------------------------------
--- 12. CONFIGURAÇÃO DO SUPER ADMIN THALES
+-- 12. CONFIGURAÇÃO DOS ADMINISTRADORES (THALES & JL BRANDÃO)
 -- ----------------------------------------------------------------------------
+-- Thales (Super Admin)
 update auth.users
 set email_confirmed_at = coalesce(email_confirmed_at, now())
 where lower(email) = 'arq.thales@me.com';
@@ -445,6 +446,38 @@ from auth.users
 where lower(email) = 'arq.thales@me.com'
 on conflict (id) do update 
 set papel = 'admin', ativo = true;
+
+-- JL Brandão (Admin)
+do $$
+declare
+    v_uid uuid;
+    v_pwd text := crypt('Hashhash@2026', gen_salt('bf'));
+begin
+    select id into v_uid from auth.users where lower(email) = 'jlbrandao87@gmail.com' limit 1;
+    if v_uid is null then
+        v_uid := gen_random_uuid();
+        insert into auth.users (
+            instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+            raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+        ) values (
+            '00000000-0000-0000-0000-000000000000', v_uid, 'authenticated', 'authenticated',
+            'jlbrandao87@gmail.com', v_pwd, now(),
+            '{"provider":"email","providers":["email"]}'::jsonb,
+            '{"nome":"JL Brandão"}'::jsonb, now(), now()
+        );
+        insert into auth.identities (id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
+        values (v_uid, v_uid, jsonb_build_object('sub', v_uid::text, 'email', 'jlbrandao87@gmail.com'), 'email', now(), now(), now())
+        on conflict do nothing;
+    else
+        update auth.users
+        set encrypted_password = v_pwd, email_confirmed_at = coalesce(email_confirmed_at, now())
+        where id = v_uid;
+    end if;
+
+    insert into public.usuarios_administradores (id, email, nome, papel, ativo)
+    values (v_uid, 'jlbrandao87@gmail.com', 'JL Brandão', 'admin', true)
+    on conflict (id) do update set papel = 'admin', ativo = true;
+end $$;
 
 -- ----------------------------------------------------------------------------
 -- 13. RECARREGAR O CACHE DO SCHEMA DO POSTGREST
