@@ -27,9 +27,43 @@ export default function CadastroComitivaPage() {
   const [success, setSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Rate Limiting / Proteção contra Brute Force
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockoutTimer, setLockoutTimer] = useState(0);
+
+  React.useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem('comitiva_reg_lockout');
+      if (stored) {
+        const remaining = Math.ceil((parseInt(stored, 10) - Date.now()) / 1000);
+        if (remaining > 0) setLockoutTimer(remaining);
+        else sessionStorage.removeItem('comitiva_reg_lockout');
+      }
+    } catch {}
+  }, []);
+
+  React.useEffect(() => {
+    if (lockoutTimer <= 0) return;
+    const interval = setInterval(() => {
+      setLockoutTimer((prev) => {
+        if (prev <= 1) {
+          sessionStorage.removeItem('comitiva_reg_lockout');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lockoutTimer]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+
+    if (lockoutTimer > 0) {
+      setErrorMessage(`Muitas tentativas inválidas. Aguarde ${lockoutTimer}s.`);
+      return;
+    }
 
     if (senha !== confirmaSenha) {
       setErrorMessage('A confirmação de senha não coincide com a senha informada.');
@@ -51,9 +85,19 @@ export default function CadastroComitivaPage() {
       });
 
       if (!res.success) {
-        setErrorMessage(res.error || 'Erro ao realizar cadastro.');
+        const nextAttempts = failedAttempts + 1;
+        setFailedAttempts(nextAttempts);
+        if (nextAttempts >= 5) {
+          const lockUntil = Date.now() + 60 * 1000;
+          sessionStorage.setItem('comitiva_reg_lockout', lockUntil.toString());
+          setLockoutTimer(60);
+          setErrorMessage('Múltiplas tentativas com código incorreto. Cadastro bloqueado temporariamente por 60 segundos.');
+        } else {
+          setErrorMessage(`${res.error || 'Erro ao realizar cadastro.'} (${5 - nextAttempts} tentativas restantes)`);
+        }
       } else {
         setSuccess(true);
+        sessionStorage.removeItem('comitiva_reg_lockout');
       }
     } catch (err: unknown) {
       setErrorMessage(err instanceof Error ? err.message : 'Falha na conexão com Supabase');

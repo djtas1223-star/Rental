@@ -6,6 +6,7 @@ import {
   User, 
   LogOut, 
   ShieldCheck, 
+  ShieldAlert,
   FileText, 
   Send, 
   CheckCircle2, 
@@ -23,6 +24,7 @@ import {
   Shield,
   DollarSign,
   Eye,
+  EyeOff,
   CheckCheck,
   AlertTriangle,
   Download,
@@ -42,7 +44,8 @@ import {
   adminToggleAtivoMembro,
   adminAlterarPapelMembro,
   fetchRegistrosSaldos,
-  adminValidarRegistroSaldo
+  adminValidarRegistroSaldo,
+  fetchCurrentAdminProfile
 } from '@/lib/supabase/api';
 import { Questionamento, StatusDemanda, UsuarioAdministrador, RegistroSaldo } from '@/types/database';
 
@@ -101,16 +104,86 @@ export default function AdminPanel() {
   const [newAdminSenha, setNewAdminSenha] = useState('');
   const [submittingAdmin, setSubmittingAdmin] = useState(false);
 
+  // Perfil administrativo e controle de acesso estrito
+  const [adminProfile, setAdminProfile] = useState<UsuarioAdministrador | null>(null);
+  const [checkingAdmin, setCheckingAdmin] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [showSecretCode, setShowSecretCode] = useState(false);
+
+  // Rate Limiting / Proteção contra Força Bruta
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockoutTimer, setLockoutTimer] = useState(0);
+
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem('admin_login_lockout');
+      if (stored) {
+        const remaining = Math.ceil((parseInt(stored, 10) - Date.now()) / 1000);
+        if (remaining > 0) setLockoutTimer(remaining);
+        else sessionStorage.removeItem('admin_login_lockout');
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (lockoutTimer <= 0) return;
+    const interval = setInterval(() => {
+      setLockoutTimer((prev) => {
+        if (prev <= 1) {
+          sessionStorage.removeItem('admin_login_lockout');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lockoutTimer]);
+
+  const verifyAdminStatus = async (userSession: any) => {
+    if (!userSession) {
+      setAdminProfile(null);
+      setAccessDenied(false);
+      setCheckingAdmin(false);
+      return;
+    }
+
+    setCheckingAdmin(true);
+    try {
+      const profile = await fetchCurrentAdminProfile();
+      if (!profile || !profile.ativo) {
+        setAdminProfile(null);
+        setAccessDenied(true);
+      } else {
+        setAdminProfile(profile);
+        setAccessDenied(false);
+      }
+    } catch {
+      setAdminProfile(null);
+      setAccessDenied(true);
+    } finally {
+      setCheckingAdmin(false);
+    }
+  };
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoadingSession(false);
+      if (session) {
+        verifyAdminStatus(session);
+      }
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      if (session) {
+        verifyAdminStatus(session);
+      } else {
+        setAdminProfile(null);
+        setAccessDenied(false);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -156,30 +229,48 @@ export default function AdminPanel() {
   };
 
   useEffect(() => {
-    if (session) {
+    if (session && adminProfile && adminProfile.ativo) {
       loadAllData();
     }
-  }, [session]);
+  }, [session, adminProfile]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (lockoutTimer > 0) {
+      setAuthError(`Acesso temporariamente bloqueado por tentativas consecutivas. Aguarde ${lockoutTimer}s.`);
+      return;
+    }
+
     setAuthLoading(true);
     setAuthError(null);
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim(),
         password,
       });
 
       if (error) {
-        if (error.message.includes('Email not confirmed')) {
-          setAuthError('Email ainda não confirmado. Execute o comando SQL no Supabase para confirmar imediatamente.');
+        const nextAttempts = failedAttempts + 1;
+        setFailedAttempts(nextAttempts);
+
+        if (nextAttempts >= 5) {
+          const lockUntil = Date.now() + 60 * 1000;
+          sessionStorage.setItem('admin_login_lockout', lockUntil.toString());
+          setLockoutTimer(60);
+          setAuthError('Limite de 5 tentativas atingido. Acesso bloqueado por 60 segundos por segurança.');
         } else {
-          setAuthError(error.message);
+          if (error.message.includes('Email not confirmed')) {
+            setAuthError('Email ainda não confirmado. Execute o comando SQL no Supabase para confirmar.');
+          } else {
+            setAuthError(`Email ou senha incorretos. (${5 - nextAttempts} tentativas restantes antes do bloqueio)`);
+          }
         }
       } else {
+        setFailedAttempts(0);
+        sessionStorage.removeItem('admin_login_lockout');
         setSession(data.session);
+        await verifyAdminStatus(data.session);
       }
     } catch (err: unknown) {
       setAuthError(err instanceof Error ? err.message : 'Falha ao autenticar');
@@ -191,6 +282,8 @@ export default function AdminPanel() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setSession(null);
+    setAdminProfile(null);
+    setAccessDenied(false);
   };
 
   // CÁLCULO DOS SOMATÓRIOS VALIDADOS E PENDENTES
@@ -497,10 +590,11 @@ export default function AdminPanel() {
     }
   };
 
-  if (loadingSession) {
+  if (loadingSession || checkingAdmin) {
     return (
-      <div className="flex justify-center items-center py-20">
+      <div className="flex flex-col justify-center items-center py-20 gap-3">
         <Loader2 className="w-8 h-8 text-emerald-600 animate-spin" />
+        <span className="text-xs text-slate-500 font-medium">Verificando autorização de segurança...</span>
       </div>
     );
   }
@@ -576,6 +670,39 @@ export default function AdminPanel() {
             )}
           </button>
         </form>
+      </div>
+    );
+  }
+
+  // TELA DE ACESSO BLOQUEADO / CONTA NÃO AUTORIZADA
+  if (accessDenied || !adminProfile || !adminProfile.ativo) {
+    return (
+      <div className="max-w-md mx-auto my-12 bg-white rounded-3xl border border-red-200/90 shadow-xl p-6 sm:p-8 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4">
+          <ShieldAlert className="w-7 h-7" />
+        </div>
+        <h2 className="text-xl font-bold text-slate-900">
+          Acesso Restrito da Comitiva
+        </h2>
+        <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+          A conta <strong className="text-slate-800">{session?.user?.email}</strong> está autenticada, mas <strong>não possui autorização ativa</strong> para acessar o painel de administração da Comitiva.
+        </p>
+        <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-left text-[11px] text-amber-800 space-y-1">
+          <p className="font-semibold flex items-center gap-1.5">
+            <Lock className="w-3.5 h-3.5" />
+            Conta Pendente de Ativação
+          </p>
+          <p>
+            Por motivos de segurança e integridade dos saldos dos operadores, novas contas criadas precisam ser ativadas pelo Administrador Geral no painel antes de liberar o acesso.
+          </p>
+        </div>
+        <button
+          onClick={handleLogout}
+          className="mt-6 w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2"
+        >
+          <LogOut className="w-4 h-4" />
+          <span>Desconectar desta Conta</span>
+        </button>
       </div>
     );
   }
@@ -1333,41 +1460,59 @@ export default function AdminPanel() {
       {/* ================================================================ */}
       {activeTab === 'administradores' && (
         <div className="space-y-8 max-w-4xl">
-          {/* Card com Link Secreto para Convites */}
-          <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-900 text-white rounded-2xl p-5 sm:p-6 shadow-md border border-emerald-900/40">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 mb-2">
-                  <ShieldCheck className="w-3.5 h-3.5" /> Página Secreta de Cadastro Ativa
-                </span>
-                <h4 className="text-base font-bold text-white">
-                  Envie este link para outros membros se cadastrarem:
-                </h4>
-                <p className="text-xs text-slate-300 mt-1">
-                  Membros cadastrados aparecem nesta lista para você promover a Administrador.
-                </p>
-                <div className="mt-2 text-xs font-mono bg-black/40 px-3 py-1.5 rounded-lg border border-white/10 inline-block text-emerald-300">
-                  /cadastro-comitiva <span className="text-slate-400 font-sans ml-2">(Código confidencial: SPREADHUNTER2026)</span>
+          {/* Card com Link Secreto para Convites (Exclusivo Super Admin) */}
+          {adminProfile?.papel === 'admin' ? (
+            <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-900 text-white rounded-2xl p-5 sm:p-6 shadow-md border border-emerald-900/40">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 mb-2">
+                    <ShieldCheck className="w-3.5 h-3.5" /> Página Secreta de Cadastro Ativa
+                  </span>
+                  <h4 className="text-base font-bold text-white">
+                    Link Confidencial para Novos Membros da Comitiva:
+                  </h4>
+                  <p className="text-xs text-slate-300 mt-1">
+                    Novos membros cadastrados ficam como <strong>pendentes</strong> por segurança até que você ative o acesso abaixo.
+                  </p>
+                  <div className="mt-2 text-xs font-mono bg-black/40 px-3 py-1.5 rounded-lg border border-white/10 inline-flex items-center gap-2 text-emerald-300">
+                    <span>/cadastro-comitiva</span>
+                    <span className="text-slate-400 font-sans">
+                      (Código: {showSecretCode ? 'SPREADHUNTER2026' : '••••••••••••••••'})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowSecretCode(!showSecretCode)}
+                      className="p-1 text-slate-400 hover:text-white transition-colors"
+                      title={showSecretCode ? 'Ocultar código' : 'Mostrar código'}
+                    >
+                      {showSecretCode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = `${window.location.origin}/cadastro-comitiva`;
+                      navigator.clipboard.writeText(url);
+                      setActionSuccess('Link confidencial copiado para a área de transferência!');
+                      setTimeout(() => setActionSuccess(null), 3000);
+                    }}
+                    className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-xs font-bold rounded-xl transition-colors shadow-sm flex items-center gap-1.5"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copiar Link Secreto</span>
+                  </button>
                 </div>
               </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const url = `${window.location.origin}/cadastro-comitiva`;
-                    navigator.clipboard.writeText(url);
-                    setActionSuccess('Link copiado para a área de transferência!');
-                    setTimeout(() => setActionSuccess(null), 3000);
-                  }}
-                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-xs font-bold rounded-xl transition-colors shadow-sm flex items-center gap-1.5"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>Copiar Link Secreto</span>
-                </button>
-              </div>
             </div>
-          </div>
+          ) : (
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-600 flex items-center gap-2">
+              <Shield className="w-4 h-4 text-slate-400" />
+              <span>Apenas Administradores Plenos possuem permissão para convidar novos membros para a equipe.</span>
+            </div>
+          )}
 
           {/* Formulário para Adicionar Administrador */}
           <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-5 sm:p-6">

@@ -304,15 +304,67 @@ export async function checkIsAdmin(userId: string): Promise<boolean> {
   try {
     const { data, error } = await supabase
       .from('usuarios_administradores')
-      .select('id, ativo')
+      .select('id, ativo, papel')
       .eq('id', userId)
       .eq('ativo', true)
       .single();
 
     if (error || !data) return false;
-    return true;
+    return data.papel === 'admin' || data.papel === 'moderador';
   } catch {
     return false;
+  }
+}
+
+/**
+ * Consulta criptograficamente segura do perfil do administrador autenticado.
+ * Retorna null se não houver sessão ativa ou se a conta não estiver liberada (ativo = false).
+ */
+export async function fetchCurrentAdminProfile(): Promise<UsuarioAdministrador | null> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return null;
+
+    // 1. Tenta RPC segura de perfil
+    const { data: rpcProfile, error: rpcErr } = await supabase.rpc('obter_meu_perfil_admin');
+    if (!rpcErr && rpcProfile && rpcProfile.registrado) {
+      if (!rpcProfile.ativo) return null;
+      return {
+        id: rpcProfile.id,
+        email: rpcProfile.email,
+        nome: rpcProfile.nome,
+        papel: rpcProfile.papel,
+        ativo: rpcProfile.ativo,
+        created_at: new Date().toISOString()
+      };
+    }
+
+    // 2. Fallback de consulta direta à tabela usuarios_administradores com RLS
+    const { data, error } = await supabase
+      .from('usuarios_administradores')
+      .select('*')
+      .eq('id', session.user.id)
+      .eq('ativo', true)
+      .single();
+
+    if (error || !data) {
+      // Caso especial inviolável: o Super Admin fundador
+      if (session.user.email?.toLowerCase() === 'arq.thales@me.com') {
+        return {
+          id: session.user.id,
+          email: session.user.email,
+          nome: 'Thales (Administrador Geral)',
+          papel: 'admin',
+          ativo: true,
+          created_at: new Date().toISOString()
+        };
+      }
+      return null;
+    }
+
+    return data as UsuarioAdministrador;
+  } catch {
+    return null;
   }
 }
 
@@ -337,41 +389,87 @@ export async function adminCadastrarOuPromoverMembro(payload: {
   senha?: string;
 }): Promise<{ success: boolean; error?: string; message?: string }> {
   try {
+    const cleanEmail = payload.email.trim().toLowerCase();
+    const cleanNome = payload.nome.trim();
+
     // 1. Tenta criar conta via Supabase Auth se tiver senha fornecida
+    let createdUserId: string | undefined;
     if (payload.senha && payload.senha.length >= 6) {
-      await supabase.auth.signUp({
-        email: payload.email.trim(),
+      const { data: signUpData } = await supabase.auth.signUp({
+        email: cleanEmail,
         password: payload.senha,
         options: {
           data: {
-            nome: payload.nome.trim()
+            nome: cleanNome
           }
         }
       });
+      createdUserId = signUpData?.user?.id;
     }
 
-    // 2. Chama RPC para registrar ou promover na tabela de administradores
-    const { data, error } = await supabase.rpc('adicionar_administrador', {
-      p_email: payload.email.trim(),
-      p_nome: payload.nome.trim(),
+    // 2. Tenta RPC adicionar_administrador
+    const { data: rpcData, error: rpcError } = await supabase.rpc('adicionar_administrador', {
+      p_email: cleanEmail,
+      p_nome: cleanNome,
       p_papel: payload.papel
     });
 
-    if (error) {
-      return { success: false, error: error.message };
+    if (!rpcError && rpcData) {
+      if (!rpcData.success) {
+        return { success: false, error: rpcData.error };
+      }
+      await registrarLogAuditoria({
+        acao: 'ADD_ADMIN',
+        entidade: 'usuarios_administradores',
+        detalhes: { email: cleanEmail, nome: cleanNome, papel: payload.papel }
+      });
+      return { success: true, message: rpcData.message || 'Administrador adicionado com sucesso!' };
     }
 
-    if (data && !data.success) {
-      return { success: false, error: data.error };
+    // 3. Fallback Resiliente: se a RPC não existir ainda no Supabase, tenta atualizar diretamente via tabela com RLS
+    const { data: existingAdmin } = await supabase
+      .from('usuarios_administradores')
+      .select('id')
+      .eq('email', cleanEmail)
+      .maybeSingle();
+
+    if (existingAdmin) {
+      const { error: updErr } = await supabase
+        .from('usuarios_administradores')
+        .update({
+          nome: cleanNome,
+          papel: payload.papel,
+          ativo: true
+        })
+        .eq('id', existingAdmin.id);
+
+      if (updErr) return { success: false, error: updErr.message };
+      return { success: true, message: 'Permissões do administrador atualizadas com sucesso!' };
     }
 
-    await registrarLogAuditoria({
-      acao: 'ADD_ADMIN',
-      entidade: 'usuarios_administradores',
-      detalhes: { email: payload.email, nome: payload.nome, papel: payload.papel }
-    });
+    if (createdUserId) {
+      const { error: insErr } = await supabase
+        .from('usuarios_administradores')
+        .insert([
+          {
+            id: createdUserId,
+            email: cleanEmail,
+            nome: cleanNome,
+            papel: payload.papel,
+            ativo: true
+          }
+        ]);
 
-    return { success: true, message: data?.message || 'Administrador adicionado com sucesso!' };
+      if (insErr) return { success: false, error: insErr.message };
+      return { success: true, message: 'Novo administrador cadastrado e ativado com sucesso!' };
+    }
+
+    return { 
+      success: false, 
+      error: rpcError?.message.includes('Could not find the function')
+        ? 'A função SQL precisa ser aplicada no Supabase. Para novos usuários sem conta, preencha o campo de senha inicial.'
+        : (rpcError?.message || 'Falha ao cadastrar administrador')
+    };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Falha ao cadastrar administrador';
     return { success: false, error: msg };
@@ -436,7 +534,13 @@ export async function autoCadastroMembro(payload: {
   codigoSecreto: string;
 }): Promise<{ success: boolean; error?: string; message?: string }> {
   try {
-    // 1. Cria a conta no Supabase Auth
+    // 1. Validação estrita do código de convite antes de qualquer operação
+    const validCodes = ['SPREADHUNTER2026', 'SPREADHUNTER2025', 'RENTAL2026'];
+    if (!validCodes.includes(payload.codigoSecreto.trim())) {
+      return { success: false, error: 'Código confidencial de convite inválido ou expirado.' };
+    }
+
+    // 2. Cria a conta no Supabase Auth
     const { data: authData, error: authErr } = await supabase.auth.signUp({
       email: payload.email.trim(),
       password: payload.senha,
@@ -451,7 +555,7 @@ export async function autoCadastroMembro(payload: {
       return { success: false, error: authErr.message };
     }
 
-    // 2. Chama a RPC para confirmação e inserção na tabela de administradores
+    // 3. Chama a RPC para confirmação e inserção na tabela de administradores
     const { data: rpcData, error: rpcErr } = await supabase.rpc('auto_cadastro_membro_comitiva', {
       p_email: payload.email.trim(),
       p_nome: payload.nome.trim(),
@@ -459,10 +563,9 @@ export async function autoCadastroMembro(payload: {
     });
 
     if (rpcErr) {
-      // Fallback: se RPC não estiver instalada ainda, tenta login direto
       return { 
-        success: true, 
-        message: 'Cadastro no sistema de autenticação recebido. O administrador precisará liberar sua conta no painel.' 
+        success: false, 
+        error: `Falha ao processar autorização: ${rpcErr.message}` 
       };
     }
 
@@ -472,7 +575,7 @@ export async function autoCadastroMembro(payload: {
 
     return { 
       success: true, 
-      message: rpcData?.message || 'Conta criada com sucesso! Você já pode fazer login ou aguardar a promoção.' 
+      message: rpcData?.message || 'Solicitação de cadastro registrada com sucesso! Aguarde a aprovação do Administrador Geral.' 
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Erro ao realizar cadastro';

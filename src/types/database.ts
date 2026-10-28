@@ -108,7 +108,7 @@ export interface UsuarioAdministrador {
   id: string;
   email: string;
   nome: string;
-  papel: 'admin' | 'moderador';
+  papel: 'admin' | 'moderador' | 'pendente';
   ativo: boolean;
   created_at: string;
 }
