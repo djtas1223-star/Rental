@@ -622,6 +622,65 @@ export async function adminUpdateQuestionamentoStatus(
   }
 }
 
+export async function adminUpdateQuestionamento(
+  id: string,
+  payload: {
+    titulo?: string;
+    descricao?: string;
+    impacto?: string;
+    status?: StatusDemanda;
+    autor_nome?: string;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('questionamentos')
+      .update({
+        ...payload,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
+
+    if (error) return { success: false, error: error.message };
+
+    await registrarLogAuditoria({
+      acao: 'UPDATE_DEMANDA',
+      entidade: 'questionamentos',
+      entidade_id: id,
+      detalhes: payload
+    });
+
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Falha ao atualizar demanda';
+    return { success: false, error: message };
+  }
+}
+
+export async function adminDeleteQuestionamento(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('questionamentos')
+      .delete()
+      .eq('id', id);
+
+    if (error) return { success: false, error: error.message };
+
+    await registrarLogAuditoria({
+      acao: 'DELETE_DEMANDA',
+      entidade: 'questionamentos',
+      entidade_id: id
+    });
+
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Falha ao excluir demanda';
+    return { success: false, error: message };
+  }
+}
+
 export async function adminAddRespostaRentalHash(payload: {
   questionamento_id: string;
   titulo: string;

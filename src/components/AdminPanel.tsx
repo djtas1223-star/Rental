@@ -49,6 +49,8 @@ import {
   adminValidarRegistroSaldo,
   adminUpdateRegistroSaldo,
   adminDeleteRegistroSaldo,
+  adminUpdateQuestionamento,
+  adminDeleteQuestionamento,
   fetchCurrentAdminProfile
 } from '@/lib/supabase/api';
 import { Questionamento, StatusDemanda, UsuarioAdministrador, RegistroSaldo } from '@/types/database';
@@ -89,6 +91,13 @@ export default function AdminPanel() {
   const [editObservacoes, setEditObservacoes] = useState('');
   const [editStatus, setEditStatus] = useState<'pendente' | 'validado' | 'divergente' | 'rejeitado'>('pendente');
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // Edit Demanda Modal State
+  const [editingDemanda, setEditingDemanda] = useState<Questionamento | null>(null);
+  const [editDemandaTitulo, setEditDemandaTitulo] = useState('');
+  const [editDemandaDescricao, setEditDemandaDescricao] = useState('');
+  const [editDemandaStatus, setEditDemandaStatus] = useState<StatusDemanda>('pendente');
+  const [savingEditDemanda, setSavingEditDemanda] = useState(false);
 
   // Demands state
   const [demandas, setDemandas] = useState<Questionamento[]>([]);
@@ -470,6 +479,60 @@ export default function AdminPanel() {
         setTimeout(() => setActionSuccess(null), 3500);
       } else {
         alert(res.error || 'Erro ao excluir registro');
+      }
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  // EDIÇÃO DE DEMANDA (QUESTIONAMENTO)
+  const handleOpenEditDemandaModal = (d: Questionamento) => {
+    setEditingDemanda(d);
+    setEditDemandaTitulo(d.titulo || '');
+    setEditDemandaDescricao(d.descricao || '');
+    setEditDemandaStatus(d.status || 'pendente');
+  };
+
+  const handleSaveEditDemanda = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDemanda) return;
+    setSavingEditDemanda(true);
+
+    try {
+      const res = await adminUpdateQuestionamento(editingDemanda.id, {
+        titulo: editDemandaTitulo.trim(),
+        descricao: editDemandaDescricao.trim(),
+        status: editDemandaStatus
+      });
+
+      if (res.success) {
+        setActionSuccess('Demanda atualizada com sucesso!');
+        setEditingDemanda(null);
+        loadAllDemandas();
+        setTimeout(() => setActionSuccess(null), 3500);
+      } else {
+        alert(res.error || 'Erro ao atualizar demanda');
+      }
+    } finally {
+      setSavingEditDemanda(false);
+    }
+  };
+
+  // EXCLUSÃO DE DEMANDA
+  const handleDeleteDemanda = async (id: string, titulo: string) => {
+    const confirmDelete = window.confirm(
+      `Tem certeza que deseja EXCLUIR permanentemente a demanda "${titulo}"?\n\nEsta ação removerá a demanda e seus apoios.`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      const res = await adminDeleteQuestionamento(id);
+      if (res.success) {
+        setActionSuccess('Demanda excluída com sucesso!');
+        setDemandas((prev) => prev.filter((d) => d.id !== id));
+        setTimeout(() => setActionSuccess(null), 3500);
+      } else {
+        alert(res.error || 'Erro ao excluir demanda');
       }
     } catch (err: any) {
       alert(err.message);
@@ -1447,6 +1510,100 @@ export default function AdminPanel() {
       )}
 
       {/* ================================================================ */}
+      {/* MODAL DE EDIÇÃO DE DEMANDA / PAUTA                               */}
+      {/* ================================================================ */}
+      {editingDemanda && (
+        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+          <div
+            className="bg-white rounded-3xl max-w-lg w-full max-h-[92vh] overflow-y-auto shadow-2xl p-6 sm:p-8 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  <Pencil className="w-4 h-4" />
+                </div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Editar Demanda / Pauta
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingDemanda(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditDemanda} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Título da Demanda
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editDemandaTitulo}
+                  onChange={(e) => setEditDemandaTitulo(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Descrição / Relato do Operador
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={editDemandaDescricao}
+                  onChange={(e) => setEditDemandaDescricao(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs outline-none focus:ring-2 focus:ring-emerald-500 resize-y"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Status da Demanda
+                </label>
+                <select
+                  value={editDemandaStatus}
+                  onChange={(e) => setEditDemandaStatus(e.target.value as any)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white outline-none"
+                >
+                  <option value="pendente">Pendente</option>
+                  <option value="em_analise">Em Análise</option>
+                  <option value="encaminhado">Encaminhado à RentalHash</option>
+                  <option value="respondido">Respondido</option>
+                  <option value="concluido">Concluído</option>
+                  <option value="rejeitado">Rejeitado</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingDemanda(null)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs font-semibold transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEditDemanda}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors shadow-sm flex items-center gap-1.5"
+                >
+                  {savingEditDemanda ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  <span>Salvar Demanda</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================ */}
       {/* TAB 2: DEMANDAS & PAUTAS                                         */}
       {/* ================================================================ */}
       {activeTab === 'moderacao' && (
@@ -1532,6 +1689,28 @@ export default function AdminPanel() {
                         Rejeitar
                       </button>
                     )}
+
+                    <div className="ml-auto flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditDemandaModal(d)}
+                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold rounded-lg transition-colors flex items-center gap-1"
+                        title="Editar demanda"
+                      >
+                        <Pencil className="w-3 h-3 text-slate-500" />
+                        <span>Editar</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteDemanda(d.id, d.titulo)}
+                        className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-[11px] font-semibold rounded-lg transition-colors flex items-center gap-1"
+                        title="Excluir demanda permanentemente"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Apagar</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
