@@ -1577,9 +1577,12 @@ export default function AdminPanel() {
                     type="password"
                     value={newAdminSenha}
                     onChange={(e) => setNewAdminSenha(e.target.value)}
-                    placeholder="Deixe em branco se a conta já existir"
+                    placeholder="Mínimo 6 dígitos (ou deixe em branco para 'Comitiva2026!')"
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white"
                   />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Se for conta nova e deixar em branco, a senha inicial será <strong>Comitiva2026!</strong>
+                  </p>
                 </div>
               </div>
 

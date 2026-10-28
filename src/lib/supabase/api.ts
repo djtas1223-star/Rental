@@ -392,22 +392,26 @@ export async function adminCadastrarOuPromoverMembro(payload: {
     const cleanEmail = payload.email.trim().toLowerCase();
     const cleanNome = payload.nome.trim();
 
-    // 1. Tenta criar conta via Supabase Auth se tiver senha fornecida
+    // 1. Garante que se nenhuma senha for fornecida, uma senha padrão segura é usada para criar a conta no Auth
+    const tempPassword = payload.senha && payload.senha.length >= 6 ? payload.senha : 'Comitiva2026!';
     let createdUserId: string | undefined;
-    if (payload.senha && payload.senha.length >= 6) {
-      const { data: signUpData } = await supabase.auth.signUp({
-        email: cleanEmail,
-        password: payload.senha,
-        options: {
-          data: {
-            nome: cleanNome
-          }
+
+    // Tenta registrar a conta no Supabase Auth caso ainda não exista
+    const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+      email: cleanEmail,
+      password: tempPassword,
+      options: {
+        data: {
+          nome: cleanNome
         }
-      });
-      createdUserId = signUpData?.user?.id;
+      }
+    });
+
+    if (signUpData?.user?.id) {
+      createdUserId = signUpData.user.id;
     }
 
-    // 2. Tenta RPC adicionar_administrador
+    // 2. Chama a RPC adicionar_administrador
     const { data: rpcData, error: rpcError } = await supabase.rpc('adicionar_administrador', {
       p_email: cleanEmail,
       p_nome: cleanNome,
@@ -423,10 +427,14 @@ export async function adminCadastrarOuPromoverMembro(payload: {
         entidade: 'usuarios_administradores',
         detalhes: { email: cleanEmail, nome: cleanNome, papel: payload.papel }
       });
-      return { success: true, message: rpcData.message || 'Administrador adicionado com sucesso!' };
+      const infoSenha = payload.senha ? '' : ' (Senha temporária gerada: Comitiva2026!)';
+      return { 
+        success: true, 
+        message: `${rpcData.message || 'Administrador adicionado com sucesso!'}${infoSenha}` 
+      };
     }
 
-    // 3. Fallback Resiliente: se a RPC não existir ainda no Supabase, tenta atualizar diretamente via tabela com RLS
+    // 3. Fallback Resiliente: se a RPC não existir ainda no Supabase, atualiza/insere direto na tabela
     const { data: existingAdmin } = await supabase
       .from('usuarios_administradores')
       .select('id')
@@ -461,14 +469,13 @@ export async function adminCadastrarOuPromoverMembro(payload: {
         ]);
 
       if (insErr) return { success: false, error: insErr.message };
-      return { success: true, message: 'Novo administrador cadastrado e ativado com sucesso!' };
+      const infoSenha = payload.senha ? '' : ' (Senha temporária: Comitiva2026!)';
+      return { success: true, message: `Novo administrador cadastrado com sucesso!${infoSenha}` };
     }
 
     return { 
       success: false, 
-      error: rpcError?.message.includes('Could not find the function')
-        ? 'A função SQL precisa ser aplicada no Supabase. Para novos usuários sem conta, preencha o campo de senha inicial.'
-        : (rpcError?.message || 'Falha ao cadastrar administrador')
+      error: rpcError?.message || 'Falha ao cadastrar administrador. Verifique se o script SQL foi executado no Supabase.'
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Falha ao cadastrar administrador';
