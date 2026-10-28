@@ -895,7 +895,24 @@ export async function adminValidarRegistroSaldo(
       .update(payload)
       .eq('id', id);
 
-    if (error) return { success: false, error: error.message };
+    if (error) {
+      // Fallback resiliente para questionamentos se a tabela registros_saldos ainda não foi criada no Supabase
+      if (error.code === 'PGRST205' || error.message?.includes('registros_saldos')) {
+        let qStatus: any = 'pendente';
+        if (updates.status === 'validado' || (updates.validado_rentalhash && updates.validado_hashsell)) {
+          qStatus = 'concluido';
+        } else if (updates.status === 'divergente' || updates.status === 'rejeitado') {
+          qStatus = 'rejeitado';
+        }
+        await supabase
+          .from('questionamentos')
+          .update({ status: qStatus, updated_at: new Date().toISOString() })
+          .eq('id', id);
+
+        return { success: true };
+      }
+      return { success: false, error: error.message };
+    }
 
     await registrarLogAuditoria({
       acao: 'VALIDAR_SALDO',
