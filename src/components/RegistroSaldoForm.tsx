@@ -252,7 +252,7 @@ export default function RegistroSaldoForm({ onSuccess }: RegistroSaldoFormProps)
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Email de Contato
+                Email de Contato <span className="text-slate-400 font-normal">(Opcional)</span>
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -260,7 +260,7 @@ export default function RegistroSaldoForm({ onSuccess }: RegistroSaldoFormProps)
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="seu-email@exemplo.com"
+                  placeholder="seu-email@exemplo.com (opcional)"
                   className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
                 />
               </div>
@@ -268,7 +268,7 @@ export default function RegistroSaldoForm({ onSuccess }: RegistroSaldoFormProps)
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                WhatsApp / Telefone para Contato
+                WhatsApp / Telefone para Contato <span className="text-slate-400 font-normal">(Opcional)</span>
               </label>
               <div className="relative">
                 <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -276,7 +276,7 @@ export default function RegistroSaldoForm({ onSuccess }: RegistroSaldoFormProps)
                   type="text"
                   value={whatsapp}
                   onChange={(e) => setWhatsapp(e.target.value)}
-                  placeholder="(DDD) 99999-9999"
+                  placeholder="(DDD) 99999-9999 (opcional)"
                   className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
                 />
               </div>
@@ -476,6 +476,23 @@ export default function RegistroSaldoForm({ onSuccess }: RegistroSaldoFormProps)
             placeholder="Informações complementares, IDs de usuários nas plataformas, carteiras de recebimento ou detalhes sobre tickets anteriores."
             className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-emerald-500 outline-none resize-y"
           />
+        </div>
+
+        {/* DECLARAÇÃO DE PRIVACIDADE & CONFORMIDADE LGPD */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200/90 text-xs text-slate-600 space-y-2.5">
+          <div className="flex items-center gap-2 text-slate-900 font-bold">
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            <span>Privacidade & Proteção de Dados (LGPD - Lei nº 13.709/2018)</span>
+          </div>
+          <p className="text-[11px] leading-relaxed text-slate-600">
+            • <strong>Finalidade Exclusiva:</strong> Seus dados de identificação, valores retidos e capturas de tela anexadas são coletados estritamente para apuração coletiva, consolidação estatística e representação perante a RentalHash e Hashsell.
+          </p>
+          <p className="text-[11px] leading-relaxed text-slate-600">
+            • <strong>Sigilo Absoluto:</strong> Seus comprovantes e contatos jamais serão vendidos, divulgados publicamente ou compartilhados com terceiros. No portal público, são exibidos exclusivamente os somatórios estatísticos anônimos e consolidados.
+          </p>
+          <p className="text-[11px] leading-relaxed text-slate-600">
+            • <strong>Segurança:</strong> O tráfego de dados e arquivos é protegido por criptografia de ponta a ponta (SSL/TLS) e controle estrito de privilégios de acesso (Row Level Security).
+          </p>
         </div>
 
         {/* BOTÃO DE SUBMISSÃO */}

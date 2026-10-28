@@ -44,21 +44,21 @@ export default function Footer() {
 
           <div>
             <h4 className="text-white font-semibold text-sm mb-3 flex items-center gap-1.5">
-              <Info className="w-4 h-4 text-emerald-400" />
-              <span>Transparência e Governança</span>
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>Privacidade & LGPD</span>
             </h4>
             <p className="text-xs text-slate-400 leading-relaxed mb-3">
-              Todos os saldos informados e comprovantes anexados são auditados e validados pelo administrador para inclusão no somatório oficial.
+              Tratamento de dados em estrita conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018). Os comprovantes e dados dos operadores são mantidos em sigilo e usados exclusivamente para a consolidação coletiva.
             </p>
             <div className="p-3 bg-slate-800/60 rounded-lg border border-slate-700/60 text-[11px] text-slate-400">
-              🛡️ Armazenamento seguro e confidencial via Supabase com Row Level Security (RLS).
+              🛡️ Criptografia SSL/TLS • Políticas RLS no banco de dados • Anonimização pública.
             </div>
           </div>
         </div>
 
         <div className="pt-6 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-3">
           <p>© {new Date().getFullYear()} Comitiva dos Operadores SpreadHunter. Todos os direitos reservados.</p>
-          <p>Auditoria de Saldos Retidos • RentalHash & Hashsell</p>
+          <p>Conformidade LGPD • Auditoria de Saldos Retidos • RentalHash & Hashsell</p>
         </div>
       </div>
     </footer>
