@@ -913,3 +913,91 @@ export async function adminValidarRegistroSaldo(
     return { success: false, error: msg };
   }
 }
+
+export async function adminUpdateRegistroSaldo(
+  id: string,
+  payload: {
+    nome?: string;
+    email?: string;
+    whatsapp?: string;
+    saldo_rentalhash?: number;
+    moeda_rentalhash?: string;
+    saldo_hashsell?: number;
+    moeda_hashsell?: string;
+    observacoes?: string;
+    status?: 'pendente' | 'validado' | 'divergente' | 'rejeitado';
+  }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const updateData: Record<string, any> = {
+      ...payload,
+      updated_at: new Date().toISOString()
+    };
+
+    const { error } = await supabase
+      .from('registros_saldos')
+      .update(updateData)
+      .eq('id', id);
+
+    if (error) {
+      if (error.code === 'PGRST205' || error.message?.includes('registros_saldos')) {
+        await supabase
+          .from('questionamentos')
+          .update({
+            titulo: payload.nome ? `[SALDO OPERADOR] ${payload.nome}` : undefined,
+            status: payload.status === 'validado' ? 'concluido' : payload.status === 'divergente' ? 'rejeitado' : 'pendente',
+            descricao: JSON.stringify(payload),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', id);
+        return { success: true };
+      }
+      return { success: false, error: error.message };
+    }
+
+    await registrarLogAuditoria({
+      acao: 'UPDATE_REGISTRO_SALDO',
+      entidade: 'registros_saldos',
+      entidade_id: id,
+      detalhes: payload
+    });
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Falha ao atualizar registro de saldo';
+    return { success: false, error: msg };
+  }
+}
+
+export async function adminDeleteRegistroSaldo(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('registros_saldos')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      if (error.code === 'PGRST205' || error.message?.includes('registros_saldos')) {
+        await supabase
+          .from('questionamentos')
+          .delete()
+          .eq('id', id);
+        return { success: true };
+      }
+      return { success: false, error: error.message };
+    }
+
+    await registrarLogAuditoria({
+      acao: 'DELETE_REGISTRO_SALDO',
+      entidade: 'registros_saldos',
+      entidade_id: id
+    });
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Falha ao excluir registro de saldo';
+    return { success: false, error: msg };
+  }
+}

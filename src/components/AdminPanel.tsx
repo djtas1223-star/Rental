@@ -31,7 +31,9 @@ import {
   ExternalLink,
   Phone,
   Mail,
-  X
+  X,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { 
@@ -45,6 +47,8 @@ import {
   adminAlterarPapelMembro,
   fetchRegistrosSaldos,
   adminValidarRegistroSaldo,
+  adminUpdateRegistroSaldo,
+  adminDeleteRegistroSaldo,
   fetchCurrentAdminProfile
 } from '@/lib/supabase/api';
 import { Questionamento, StatusDemanda, UsuarioAdministrador, RegistroSaldo } from '@/types/database';
@@ -74,6 +78,17 @@ export default function AdminPanel() {
     tipo: 'rentalhash' | 'hashsell';
     validado: boolean;
   } | null>(null);
+
+  // Edit Registro Modal State
+  const [editingRegistro, setEditingRegistro] = useState<RegistroSaldo | null>(null);
+  const [editNome, setEditNome] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editWhatsapp, setEditWhatsapp] = useState('');
+  const [editSaldoRental, setEditSaldoRental] = useState('');
+  const [editSaldoHashsell, setEditSaldoHashsell] = useState('');
+  const [editObservacoes, setEditObservacoes] = useState('');
+  const [editStatus, setEditStatus] = useState<'pendente' | 'validado' | 'divergente' | 'rejeitado'>('pendente');
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Demands state
   const [demandas, setDemandas] = useState<Questionamento[]>([]);
@@ -393,6 +408,68 @@ export default function AdminPanel() {
         setTimeout(() => setActionSuccess(null), 3500);
       } else {
         alert(res.error || 'Erro ao atualizar status');
+      }
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  // EDIÇÃO DE REGISTRO DE SALDO
+  const handleOpenEditModal = (reg: RegistroSaldo) => {
+    setEditingRegistro(reg);
+    setEditNome(reg.nome || '');
+    setEditEmail(reg.email || '');
+    setEditWhatsapp(reg.whatsapp || '');
+    setEditSaldoRental(String(reg.saldo_rentalhash ?? '0'));
+    setEditSaldoHashsell(String(reg.saldo_hashsell ?? '0'));
+    setEditObservacoes(reg.observacoes || '');
+    setEditStatus(reg.status || 'pendente');
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingRegistro) return;
+    setSavingEdit(true);
+
+    try {
+      const res = await adminUpdateRegistroSaldo(editingRegistro.id, {
+        nome: editNome.trim(),
+        email: editEmail.trim() || undefined,
+        whatsapp: editWhatsapp.trim() || undefined,
+        saldo_rentalhash: parseFloat(editSaldoRental.replace(',', '.')) || 0,
+        saldo_hashsell: parseFloat(editSaldoHashsell.replace(',', '.')) || 0,
+        observacoes: editObservacoes.trim() || undefined,
+        status: editStatus
+      });
+
+      if (res.success) {
+        setActionSuccess('Registro de saldo atualizado com sucesso!');
+        setEditingRegistro(null);
+        loadSaldos();
+        setTimeout(() => setActionSuccess(null), 3500);
+      } else {
+        alert(res.error || 'Erro ao atualizar registro');
+      }
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  // EXCLUSÃO DE REGISTRO DE SALDO
+  const handleDeleteRegistro = async (id: string, nome: string) => {
+    const confirmDelete = window.confirm(
+      `Tem certeza que deseja EXCLUIR permanentemente o registro de saldo de "${nome}"?\n\nEsta ação removerá o registro e seus valores da somatória.`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      const res = await adminDeleteRegistroSaldo(id);
+      if (res.success) {
+        setActionSuccess(`Registro de ${nome} excluído com sucesso!`);
+        setRegistrosSaldos((prev) => prev.filter((r) => r.id !== id));
+        setTimeout(() => setActionSuccess(null), 3500);
+      } else {
+        alert(res.error || 'Erro ao excluir registro');
       }
     } catch (err: any) {
       alert(err.message);
@@ -1105,11 +1182,33 @@ export default function AdminPanel() {
                       <button
                         type="button"
                         onClick={() => handleMarcarDivergente(reg.id)}
-                        className="px-3 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-[11px] font-medium transition-colors"
+                        className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-[11px] font-medium transition-colors text-center"
                         title="Marcar que o print não confere"
                       >
                         Divergência
                       </button>
+
+                      <div className="flex items-center gap-1.5 pt-1 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditModal(reg)}
+                          className="flex-1 py-1 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold transition-colors flex items-center justify-center gap-1"
+                          title="Editar dados e valores deste operador"
+                        >
+                          <Pencil className="w-3 h-3 text-slate-500" />
+                          <span>Editar</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRegistro(reg.id, reg.nome)}
+                          className="py-1 px-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-[11px] font-semibold transition-colors flex items-center justify-center gap-1 border border-red-200"
+                          title="Excluir este registro permanentemente"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Apagar</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1195,6 +1294,154 @@ export default function AdminPanel() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================ */}
+      {/* MODAL DE EDIÇÃO DE REGISTRO DE SALDO                             */}
+      {/* ================================================================ */}
+      {editingRegistro && (
+        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+          <div
+            className="bg-white rounded-3xl max-w-xl w-full max-h-[92vh] overflow-y-auto shadow-2xl p-6 sm:p-8 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  <Pencil className="w-4 h-4" />
+                </div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Editar Registro de Saldo
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingRegistro(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Nome Completo do Operador
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editNome}
+                  onChange={(e) => setEditNome(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Email de Contato
+                  </label>
+                  <input
+                    type="email"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    placeholder="email@exemplo.com"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    WhatsApp / Telefone
+                  </label>
+                  <input
+                    type="text"
+                    value={editWhatsapp}
+                    onChange={(e) => setEditWhatsapp(e.target.value)}
+                    placeholder="(DDD) 99999-9999"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-200">
+                  <label className="block font-bold text-blue-900 mb-1">
+                    Saldo RentalHash (USDT)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editSaldoRental}
+                    onChange={(e) => setEditSaldoRental(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-blue-200 text-xs font-semibold bg-white outline-none"
+                  />
+                </div>
+
+                <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-200">
+                  <label className="block font-bold text-purple-900 mb-1">
+                    Saldo Hashsell (USDT)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editSaldoHashsell}
+                    onChange={(e) => setEditSaldoHashsell(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-purple-200 text-xs font-semibold bg-white outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Status de Auditoria
+                </label>
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value as any)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white outline-none"
+                >
+                  <option value="pendente">Aguardando Validação</option>
+                  <option value="validado">Validado (Auditado OK)</option>
+                  <option value="divergente">Divergente (Print não confere)</option>
+                  <option value="rejeitado">Rejeitado</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Observações Internas / Detalhes
+                </label>
+                <textarea
+                  rows={3}
+                  value={editObservacoes}
+                  onChange={(e) => setEditObservacoes(e.target.value)}
+                  placeholder="Observações sobre comprovante, carteira ou tickets"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs outline-none resize-y"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingRegistro(null)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs font-semibold transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors shadow-sm flex items-center gap-1.5"
+                >
+                  {savingEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  <span>Salvar Alterações</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
