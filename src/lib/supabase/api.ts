@@ -391,31 +391,14 @@ export async function adminCadastrarOuPromoverMembro(payload: {
   try {
     const cleanEmail = payload.email.trim().toLowerCase();
     const cleanNome = payload.nome.trim();
+    const cleanSenha = payload.senha?.trim() || 'Comitiva2026!';
 
-    // 1. Garante que se nenhuma senha for fornecida, uma senha padrão segura é usada para criar a conta no Auth
-    const tempPassword = payload.senha && payload.senha.length >= 6 ? payload.senha : 'Comitiva2026!';
-    let createdUserId: string | undefined;
-
-    // Tenta registrar a conta no Supabase Auth caso ainda não exista
-    const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-      email: cleanEmail,
-      password: tempPassword,
-      options: {
-        data: {
-          nome: cleanNome
-        }
-      }
-    });
-
-    if (signUpData?.user?.id) {
-      createdUserId = signUpData.user.id;
-    }
-
-    // 2. Chama a RPC adicionar_administrador
+    // 1. Tenta RPC direta adicionar_administrador com p_senha (que cria no Auth e na tabela simultaneamente)
     const { data: rpcData, error: rpcError } = await supabase.rpc('adicionar_administrador', {
       p_email: cleanEmail,
       p_nome: cleanNome,
-      p_papel: payload.papel
+      p_papel: payload.papel,
+      p_senha: cleanSenha
     });
 
     if (!rpcError && rpcData) {
@@ -427,14 +410,35 @@ export async function adminCadastrarOuPromoverMembro(payload: {
         entidade: 'usuarios_administradores',
         detalhes: { email: cleanEmail, nome: cleanNome, papel: payload.papel }
       });
-      const infoSenha = payload.senha ? '' : ' (Senha temporária gerada: Comitiva2026!)';
       return { 
         success: true, 
-        message: `${rpcData.message || 'Administrador adicionado com sucesso!'}${infoSenha}` 
+        message: rpcData.message || `Administrador adicionado com sucesso! Senha: ${cleanSenha}` 
       };
     }
 
-    // 3. Fallback Resiliente: se a RPC não existir ainda no Supabase, atualiza/insere direto na tabela
+    // 2. Se a versão instalada da RPC esperar apenas 3 parâmetros (sem p_senha)
+    const { data: rpcData3, error: rpcError3 } = await supabase.rpc('adicionar_administrador', {
+      p_email: cleanEmail,
+      p_nome: cleanNome,
+      p_papel: payload.papel
+    });
+
+    if (!rpcError3 && rpcData3) {
+      if (!rpcData3.success) {
+        return { success: false, error: rpcData3.error };
+      }
+      await registrarLogAuditoria({
+        acao: 'ADD_ADMIN',
+        entidade: 'usuarios_administradores',
+        detalhes: { email: cleanEmail, nome: cleanNome, papel: payload.papel }
+      });
+      return { 
+        success: true, 
+        message: rpcData3.message || 'Administrador adicionado com sucesso!' 
+      };
+    }
+
+    // 3. Fallback: Se o usuário já existir na tabela, apenas atualiza seu papel
     const { data: existingAdmin } = await supabase
       .from('usuarios_administradores')
       .select('id')
@@ -455,27 +459,9 @@ export async function adminCadastrarOuPromoverMembro(payload: {
       return { success: true, message: 'Permissões do administrador atualizadas com sucesso!' };
     }
 
-    if (createdUserId) {
-      const { error: insErr } = await supabase
-        .from('usuarios_administradores')
-        .insert([
-          {
-            id: createdUserId,
-            email: cleanEmail,
-            nome: cleanNome,
-            papel: payload.papel,
-            ativo: true
-          }
-        ]);
-
-      if (insErr) return { success: false, error: insErr.message };
-      const infoSenha = payload.senha ? '' : ' (Senha temporária: Comitiva2026!)';
-      return { success: true, message: `Novo administrador cadastrado com sucesso!${infoSenha}` };
-    }
-
     return { 
       success: false, 
-      error: rpcError?.message || 'Falha ao cadastrar administrador. Verifique se o script SQL foi executado no Supabase.'
+      error: rpcError?.message || rpcError3?.message || 'Erro ao registrar administrador no Supabase.'
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Falha ao cadastrar administrador';

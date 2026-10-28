@@ -134,25 +134,29 @@ as $$
 $$;
 
 -- ----------------------------------------------------------------------------
--- 7. FUNÇÃO RPC: ADICIONAR ADMINISTRADOR
+-- 7. FUNÇÃO RPC: ADICIONAR ADMINISTRADOR (Com Criação Automática no Auth)
 -- ----------------------------------------------------------------------------
+create extension if not exists "pgcrypto";
+
 create or replace function public.adicionar_administrador(
     p_email text,
     p_nome text,
-    p_papel text default 'moderador'
+    p_papel text default 'moderador',
+    p_senha text default 'Comitiva2026!'
 )
 returns jsonb
 language plpgsql
 security definer
-set search_path = public, auth
+set search_path = public, auth, extensions
 as $$
 declare
     v_user_id uuid;
-    v_caller_is_super boolean;
+    v_encrypted_pw text;
+    v_caller_is_admin boolean;
 begin
-    -- Validação: apenas administradores ativos podem adicionar/promover outros membros
-    select public.is_admin() into v_caller_is_super;
-    if not v_caller_is_super then
+    -- 1. Validação: apenas administradores ativos podem adicionar outros membros
+    select public.is_admin() into v_caller_is_admin;
+    if not v_caller_is_admin then
         return jsonb_build_object(
             'success', false, 
             'error', 'Acesso negado: Somente administradores autorizados podem gerenciar a equipe.'
@@ -163,19 +167,72 @@ begin
         p_papel := 'moderador';
     end if;
 
+    -- 2. Localiza se já existe no auth.users
     select id into v_user_id from auth.users where lower(email) = lower(trim(p_email)) limit 1;
 
+    -- 3. Se NÃO existir, cria a conta no auth.users automaticamente com senha criptografada!
     if v_user_id is null then
-        return jsonb_build_object(
-            'success', false, 
-            'error', 'Usuário com o email ' || p_email || ' ainda não possui conta registrada no sistema.'
+        v_user_id := gen_random_uuid();
+        v_encrypted_pw := crypt(coalesce(nullif(trim(p_senha), ''), 'Comitiva2026!'), gen_salt('bf'));
+
+        insert into auth.users (
+            instance_id,
+            id,
+            aud,
+            role,
+            email,
+            encrypted_password,
+            email_confirmed_at,
+            raw_app_meta_data,
+            raw_user_meta_data,
+            created_at,
+            updated_at
+        ) values (
+            '00000000-0000-0000-0000-000000000000',
+            v_user_id,
+            'authenticated',
+            'authenticated',
+            lower(trim(p_email)),
+            v_encrypted_pw,
+            now(),
+            '{"provider":"email","providers":["email"]}'::jsonb,
+            jsonb_build_object('nome', p_nome),
+            now(),
+            now()
         );
+
+        insert into auth.identities (
+            id,
+            user_id,
+            identity_data,
+            provider,
+            last_sign_in_at,
+            created_at,
+            updated_at
+        ) values (
+            v_user_id,
+            v_user_id,
+            jsonb_build_object('sub', v_user_id::text, 'email', lower(trim(p_email))),
+            'email',
+            now(),
+            now(),
+            now()
+        ) on conflict do nothing;
+    else
+        -- Se já existia e foi passada uma nova senha, atualiza a senha
+        if p_senha is not null and length(trim(p_senha)) >= 6 then
+            update auth.users
+            set encrypted_password = crypt(trim(p_senha), gen_salt('bf')),
+                email_confirmed_at = coalesce(email_confirmed_at, now())
+            where id = v_user_id;
+        else
+            update auth.users
+            set email_confirmed_at = coalesce(email_confirmed_at, now())
+            where id = v_user_id;
+        end if;
     end if;
 
-    update auth.users
-    set email_confirmed_at = coalesce(email_confirmed_at, now())
-    where id = v_user_id;
-
+    -- 4. Insere ou atualiza na tabela de administradores
     insert into public.usuarios_administradores (id, email, nome, papel, ativo)
     values (v_user_id, lower(trim(p_email)), p_nome, p_papel, true)
     on conflict (id) do update set
@@ -183,8 +240,24 @@ begin
         nome = p_nome,
         ativo = true;
 
-    return jsonb_build_object('success', true, 'message', 'Administrador configurado com sucesso!');
+    return jsonb_build_object(
+        'success', true, 
+        'message', 'Administrador cadastrado com sucesso! Senha: ' || coalesce(nullif(trim(p_senha), ''), 'Comitiva2026!')
+    );
 end;
+$$;
+
+-- Sobrecarga com 3 parâmetros para compatibilidade
+create or replace function public.adicionar_administrador(
+    p_email text,
+    p_nome text,
+    p_papel text default 'moderador'
+)
+returns jsonb
+language sql
+security definer
+as $$
+  select public.adicionar_administrador(p_email, p_nome, p_papel, 'Comitiva2026!');
 $$;
 
 -- ----------------------------------------------------------------------------
