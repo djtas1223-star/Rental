@@ -13,11 +13,11 @@ export default function Footer() {
                 <ShieldCheck className="w-5 h-5" />
               </div>
               <span className="font-bold text-white text-base">
-                Comitiva dos Operadores SpreadHunter
+                Comitiva SpreadHunter
               </span>
             </div>
             <p className="text-sm text-slate-400 leading-relaxed">
-              Iniciativa organizada de operadores com foco em representação legítima, centralização de questionamentos e diálogo transparente com a RentalHash.
+              Iniciativa unificada de operadores com foco em apuração, auditoria e consolidação coletiva de saldos retidos perante a RentalHash e Hashsell.
             </p>
           </div>
 
@@ -31,12 +31,12 @@ export default function Footer() {
               </li>
               <li>
                 <Link href="/nova-demanda" className="hover:text-emerald-400 transition-colors">
-                  Registrar Nova Demanda
+                  Registrar Saldo Pendente
                 </Link>
               </li>
               <li>
                 <Link href="/admin" className="hover:text-emerald-400 transition-colors">
-                  Painel de Moderação Comitiva
+                  Painel Administrativo da Comitiva
                 </Link>
               </li>
             </ul>
@@ -48,17 +48,17 @@ export default function Footer() {
               <span>Transparência e Governança</span>
             </h4>
             <p className="text-xs text-slate-400 leading-relaxed mb-3">
-              Todas as demandas submetidas passam por triagem da comitiva para evitar duplicidades e direcionar pautas coletivas com maior impacto.
+              Todos os saldos informados e comprovantes anexados são auditados e validados pelo administrador para inclusão no somatório oficial.
             </p>
             <div className="p-3 bg-slate-800/60 rounded-lg border border-slate-700/60 text-[11px] text-slate-400">
-              🛡️ Os dados são salvos com segurança via Supabase com controle rigoroso de Row Level Security (RLS).
+              🛡️ Armazenamento seguro e confidencial via Supabase com Row Level Security (RLS).
             </div>
           </div>
         </div>
 
         <div className="pt-6 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-3">
           <p>© {new Date().getFullYear()} Comitiva dos Operadores SpreadHunter. Todos os direitos reservados.</p>
-          <p>Conexão com RentalHash • Monitoramento de Hashrate & Repasses</p>
+          <p>Auditoria de Saldos Retidos • RentalHash & Hashsell</p>
         </div>
       </div>
     </footer>

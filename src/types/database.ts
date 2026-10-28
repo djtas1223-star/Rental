@@ -37,6 +37,27 @@ export interface Questionamento {
   historico_atualizacoes?: HistoricoAtualizacao[];
 }
 
+export interface RegistroSaldo {
+  id: string;
+  nome: string;
+  email?: string | null;
+  whatsapp?: string | null;
+  saldo_rentalhash: number;
+  moeda_rentalhash: string;
+  comprovante_rentalhash_url?: string | null;
+  validado_rentalhash: boolean;
+  saldo_hashsell: number;
+  moeda_hashsell: string;
+  comprovante_hashsell_url?: string | null;
+  validado_hashsell: boolean;
+  observacoes?: string | null;
+  status: 'pendente' | 'validado' | 'divergente' | 'rejeitado';
+  validado_por?: string | null;
+  validado_em?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Apoio {
   id: string;
   questionamento_id: string;

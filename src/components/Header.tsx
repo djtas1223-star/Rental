@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { ShieldCheck, PlusCircle, Bell, Lock } from 'lucide-react';
+import { ShieldCheck, PlusCircle, Bell, Lock, DollarSign } from 'lucide-react';
 
 export default function Header() {
   return (
@@ -20,11 +20,11 @@ export default function Header() {
                   Comitiva SpreadHunter
                 </span>
                 <span className="hidden sm:inline-block text-[11px] font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
-                  Canal Oficial
+                  Censo Oficial
                 </span>
               </div>
               <p className="text-xs text-slate-500 hidden sm:block">
-                Representação e transparência com a RentalHash
+                Consolidação de Saldos Retidos • RentalHash & Hashsell
               </p>
             </div>
           </Link>
@@ -43,9 +43,9 @@ export default function Header() {
               href="/nova-demanda"
               className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-3.5 py-2 rounded-lg shadow-sm hover:shadow transition-all"
             >
-              <PlusCircle className="w-4 h-4" />
-              <span className="hidden sm:inline">Nova Demanda</span>
-              <span className="sm:hidden">Nova</span>
+              <DollarSign className="w-4 h-4" />
+              <span className="hidden sm:inline">Registrar Saldo</span>
+              <span className="sm:hidden">Saldo</span>
             </Link>
 
             <Link

@@ -4,11 +4,10 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
   ShieldCheck, 
-  PlusCircle, 
+  DollarSign, 
   Bell, 
   Calendar,
   User,
-  ChevronRight,
   Pin
 } from 'lucide-react';
 import { ComunicadoComitiva } from '@/types/database';
@@ -31,15 +30,15 @@ export default function HomePage() {
         <div className="relative z-10 max-w-3xl">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold mb-4">
             <ShieldCheck className="w-4 h-4" />
-            <span>Portal Oficial dos Operadores SpreadHunter</span>
+            <span>Censo Oficial • Comitiva dos Operadores SpreadHunter</span>
           </div>
 
           <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight leading-tight">
-            Transparência, Força Coletiva & Respostas da RentalHash.
+            Consolidação Coletiva de Saldos Retidos (RentalHash & Hashsell)
           </h1>
 
           <p className="mt-4 text-sm sm:text-base text-slate-300 leading-relaxed">
-            Canal oficial da comitiva para representação de operadores, acompanhamento de comunicados e envio de demandas e sugestões perante a diretoria da RentalHash.
+            Canal oficial para apuração e auditoria de valores pendentes de repasse e saques. Registre seus saldos e envie os comprovantes para que a comitiva valide e unifique a representação formal perante as empresas.
           </p>
 
           <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -47,8 +46,8 @@ export default function HomePage() {
               href="/nova-demanda"
               className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold px-5 py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20"
             >
-              <PlusCircle className="w-5 h-5" />
-              <span>Nova Demanda</span>
+              <DollarSign className="w-5 h-5" />
+              <span>Registrar Saldo Pendente</span>
             </Link>
 
             <Link
@@ -82,8 +81,8 @@ export default function HomePage() {
             href="/nova-demanda"
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-xl border border-emerald-200 transition-colors w-fit"
           >
-            <PlusCircle className="w-3.5 h-3.5" />
-            <span>Enviar Nova Demanda</span>
+            <DollarSign className="w-3.5 h-3.5" />
+            <span>Registrar Saldo</span>
           </Link>
         </div>
 

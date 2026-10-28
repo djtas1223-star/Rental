@@ -21,8 +21,15 @@ import {
   Users,
   UserPlus,
   Shield,
-  ToggleLeft,
-  ToggleRight
+  DollarSign,
+  Eye,
+  CheckCheck,
+  AlertTriangle,
+  Download,
+  ExternalLink,
+  Phone,
+  Mail,
+  X
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { 
@@ -34,9 +41,10 @@ import {
   adminCadastrarOuPromoverMembro,
   adminToggleAtivoMembro,
   adminAlterarPapelMembro,
-  checkIsAdmin
+  fetchRegistrosSaldos,
+  adminValidarRegistroSaldo
 } from '@/lib/supabase/api';
-import { Questionamento, StatusDemanda, UsuarioAdministrador } from '@/types/database';
+import { Questionamento, StatusDemanda, UsuarioAdministrador, RegistroSaldo } from '@/types/database';
 
 export default function AdminPanel() {
   const [session, setSession] = useState<any>(null);
@@ -48,8 +56,21 @@ export default function AdminPanel() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Admin tabs: 'moderacao' | 'resposta' | 'comunicado' | 'administradores'
-  const [activeTab, setActiveTab] = useState<'moderacao' | 'resposta' | 'comunicado' | 'administradores'>('moderacao');
+  // Admin tabs: 'saldos' | 'moderacao' | 'resposta' | 'comunicado' | 'administradores'
+  const [activeTab, setActiveTab] = useState<'saldos' | 'moderacao' | 'resposta' | 'comunicado' | 'administradores'>('saldos');
+
+  // Saldos state
+  const [registrosSaldos, setRegistrosSaldos] = useState<RegistroSaldo[]>([]);
+  const [loadingSaldos, setLoadingSaldos] = useState(false);
+  const [activePrintModal, setActivePrintModal] = useState<{
+    url: string;
+    titulo: string;
+    operador: string;
+    valor: string;
+    registroId: string;
+    tipo: 'rentalhash' | 'hashsell';
+    validado: boolean;
+  } | null>(null);
 
   // Demands state
   const [demandas, setDemandas] = useState<Questionamento[]>([]);
@@ -95,6 +116,22 @@ export default function AdminPanel() {
     return () => subscription.unsubscribe();
   }, []);
 
+  const loadAllData = async () => {
+    loadSaldos();
+    loadAllDemandas();
+    loadAdministradores();
+  };
+
+  const loadSaldos = async () => {
+    setLoadingSaldos(true);
+    try {
+      const data = await fetchRegistrosSaldos();
+      setRegistrosSaldos(data);
+    } finally {
+      setLoadingSaldos(false);
+    }
+  };
+
   const loadAllDemandas = async () => {
     setLoadingDemandas(true);
     try {
@@ -120,8 +157,7 @@ export default function AdminPanel() {
 
   useEffect(() => {
     if (session) {
-      loadAllDemandas();
-      loadAdministradores();
+      loadAllData();
     }
   }, [session]);
 
@@ -155,6 +191,167 @@ export default function AdminPanel() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setSession(null);
+  };
+
+  // CÁLCULO DOS SOMATÓRIOS VALIDADOS E PENDENTES
+  const totalRentalHashValidado = registrosSaldos
+    .filter((r) => r.validado_rentalhash)
+    .reduce((acc, r) => acc + (Number(r.saldo_rentalhash) || 0), 0);
+
+  const totalHashsellValidado = registrosSaldos
+    .filter((r) => r.validado_hashsell)
+    .reduce((acc, r) => acc + (Number(r.saldo_hashsell) || 0), 0);
+
+  const totalGeralValidado = totalRentalHashValidado + totalHashsellValidado;
+
+  const totalPendentesValidacao = registrosSaldos.filter(
+    (r) => !r.validado_rentalhash || !r.validado_hashsell
+  ).length;
+
+  // AÇÕES DE VALIDAÇÃO DE SALDO (DAR O OK)
+  const handleToggleValidacaoItem = async (
+    registroId: string,
+    tipo: 'rentalhash' | 'hashsell',
+    valorAtual: boolean
+  ) => {
+    const novoValor = !valorAtual;
+    try {
+      const registro = registrosSaldos.find((r) => r.id === registroId);
+      if (!registro) return;
+
+      const updates: any = {
+        adminNome: session?.user?.email || 'Administrador',
+      };
+
+      if (tipo === 'rentalhash') {
+        updates.validado_rentalhash = novoValor;
+        if (novoValor && registro.validado_hashsell) {
+          updates.status = 'validado';
+        }
+      } else {
+        updates.validado_hashsell = novoValor;
+        if (novoValor && registro.validado_rentalhash) {
+          updates.status = 'validado';
+        }
+      }
+
+      const res = await adminValidarRegistroSaldo(registroId, updates);
+      if (res.success) {
+        setRegistrosSaldos((prev) =>
+          prev.map((r) => (r.id === registroId ? { ...r, ...updates } : r))
+        );
+        setActionSuccess(
+          novoValor
+            ? `Saldo ${tipo.toUpperCase()} validado com sucesso! Entrou no somatório.`
+            : `Validação ${tipo.toUpperCase()} removida.`
+        );
+        setTimeout(() => setActionSuccess(null), 3500);
+
+        if (activePrintModal) {
+          setActivePrintModal((prev) => (prev ? { ...prev, validado: novoValor } : null));
+        }
+      } else {
+        alert(res.error || 'Erro ao validar saldo');
+      }
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleValidarTudo = async (registroId: string) => {
+    try {
+      const updates = {
+        validado_rentalhash: true,
+        validado_hashsell: true,
+        status: 'validado' as const,
+        adminNome: session?.user?.email || 'Administrador',
+      };
+
+      const res = await adminValidarRegistroSaldo(registroId, updates);
+      if (res.success) {
+        setRegistrosSaldos((prev) =>
+          prev.map((r) => (r.id === registroId ? { ...r, ...updates } : r))
+        );
+        setActionSuccess('Operador 100% validado! Ambos os valores entraram no somatório.');
+        setTimeout(() => setActionSuccess(null), 3500);
+      } else {
+        alert(res.error || 'Erro ao validar registro');
+      }
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleMarcarDivergente = async (registroId: string) => {
+    try {
+      const updates = {
+        validado_rentalhash: false,
+        validado_hashsell: false,
+        status: 'divergente' as const,
+        adminNome: session?.user?.email || 'Administrador',
+      };
+
+      const res = await adminValidarRegistroSaldo(registroId, updates);
+      if (res.success) {
+        setRegistrosSaldos((prev) =>
+          prev.map((r) => (r.id === registroId ? { ...r, ...updates } : r))
+        );
+        setActionSuccess('Registro marcado como Divergente/Inconsistente com o print.');
+        setTimeout(() => setActionSuccess(null), 3500);
+      } else {
+        alert(res.error || 'Erro ao atualizar status');
+      }
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  // EXPORTAR PLANILHA CSV
+  const handleExportCSV = () => {
+    if (registrosSaldos.length === 0) {
+      alert('Nenhum registro para exportar.');
+      return;
+    }
+
+    const headers = [
+      'Nome Operador',
+      'Email',
+      'WhatsApp',
+      'Saldo RentalHash',
+      'Moeda RentalHash',
+      'RentalHash Validado?',
+      'Saldo Hashsell',
+      'Moeda Hashsell',
+      'Hashsell Validado?',
+      'Status Geral',
+      'Observações',
+      'Data Cadastro'
+    ];
+
+    const rows = registrosSaldos.map((r) => [
+      `"${r.nome.replace(/"/g, '""')}"`,
+      `"${(r.email || '').replace(/"/g, '""')}"`,
+      `"${(r.whatsapp || '').replace(/"/g, '""')}"`,
+      r.saldo_rentalhash,
+      r.moeda_rentalhash,
+      r.validado_rentalhash ? 'SIM (OK)' : 'NAO',
+      r.saldo_hashsell,
+      r.moeda_hashsell,
+      r.validado_hashsell ? 'SIM (OK)' : 'NAO',
+      r.status.toUpperCase(),
+      `"${(r.observacoes || '').replace(/"/g, '""')}"`,
+      new Date(r.created_at).toLocaleString('pt-BR')
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `censo_saldos_spreadhunter_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleStatusChange = async (id: string, novoStatus: StatusDemanda, motivo: string) => {
@@ -319,7 +516,7 @@ export default function AdminPanel() {
           Acesso Restrito da Comitiva
         </h2>
         <p className="text-xs text-center text-slate-500 mb-6 mt-1">
-          Área exclusiva para moderação de dúvidas, publicação de respostas da RentalHash e gestão de administradores.
+          Área exclusiva para validação de saldos, auditoria de comprovantes e governança.
         </p>
 
         {authError && (
@@ -379,19 +576,13 @@ export default function AdminPanel() {
             )}
           </button>
         </form>
-
-        <div className="mt-6 pt-4 border-t border-slate-100 text-center space-y-2">
-          <p className="text-[11px] text-slate-500">
-            Usuário pré-cadastrado: <strong className="text-slate-800">arq.thales@me.com</strong>
-          </p>
-        </div>
       </div>
     );
   }
 
   // TELA DO PAINEL LOGADO
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 my-8">
+    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8 my-8 space-y-6">
       {/* Top Bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-100">
         <div className="flex items-center gap-3">
@@ -400,7 +591,7 @@ export default function AdminPanel() {
           </div>
           <div>
             <h2 className="text-lg font-bold text-slate-900">
-              Painel de Governança da Comitiva
+              Painel de Governança & Auditoria da Comitiva
             </h2>
             <p className="text-xs text-slate-500">
               Conectado como: <strong className="text-slate-700">{session.user.email}</strong>
@@ -410,10 +601,7 @@ export default function AdminPanel() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => {
-              loadAllDemandas();
-              loadAdministradores();
-            }}
+            onClick={loadAllData}
             className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
             title="Atualizar dados"
           >
@@ -430,29 +618,41 @@ export default function AdminPanel() {
       </div>
 
       {actionSuccess && (
-        <div className="my-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center gap-2">
+        <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-          <span>{actionSuccess}</span>
+          <span className="font-semibold">{actionSuccess}</span>
         </div>
       )}
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-2 my-6 border-b border-slate-100 pb-3">
+      <div className="flex flex-wrap gap-2 border-b border-slate-100 pb-3">
+        <button
+          onClick={() => setActiveTab('saldos')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-colors ${
+            activeTab === 'saldos'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+          }`}
+        >
+          <DollarSign className="w-4 h-4" />
+          <span>Saldos & Validação ({registrosSaldos.length})</span>
+        </button>
+
         <button
           onClick={() => setActiveTab('moderacao')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors ${
+          className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors ${
             activeTab === 'moderacao'
               ? 'bg-slate-900 text-white'
               : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
           }`}
         >
           <ListFilter className="w-3.5 h-3.5" />
-          <span>Demandas Ativas & Moderação ({demandas.length})</span>
+          <span>Demandas & Pautas ({demandas.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('resposta')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors ${
+          className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors ${
             activeTab === 'resposta'
               ? 'bg-slate-900 text-white'
               : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
@@ -464,7 +664,7 @@ export default function AdminPanel() {
 
         <button
           onClick={() => setActiveTab('comunicado')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors ${
+          className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors ${
             activeTab === 'comunicado'
               ? 'bg-slate-900 text-white'
               : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
@@ -476,18 +676,405 @@ export default function AdminPanel() {
 
         <button
           onClick={() => setActiveTab('administradores')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors ${
+          className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors ml-auto ${
             activeTab === 'administradores'
-              ? 'bg-emerald-700 text-white'
-              : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+              ? 'bg-slate-900 text-white'
+              : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
           }`}
         >
           <Users className="w-3.5 h-3.5" />
-          <span>Gestão de Administradores ({administradores.length})</span>
+          <span>Administradores ({administradores.length})</span>
         </button>
       </div>
 
-      {/* TAB 1: MODERAÇÃO */}
+      {/* ================================================================ */}
+      {/* TAB 1: SALDOS REGISTRADOS & VALIDAÇÃO COM SOMATÓRIOS             */}
+      {/* ================================================================ */}
+      {activeTab === 'saldos' && (
+        <div className="space-y-6">
+          {/* CARDS DOS SOMATÓRIOS OFICIAIS */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Total Geral Validado */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-950 to-slate-900 text-white shadow-md border border-emerald-800/40">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 block mb-1">
+                Total Geral Auditado
+              </span>
+              <div className="text-2xl font-black text-white">
+                USDT {totalGeralValidado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Soma de todos os saldos validados com print conferido
+              </p>
+            </div>
+
+            {/* Total RentalHash Validado */}
+            <div className="p-4 rounded-2xl bg-blue-50/80 border border-blue-200">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700 block mb-1">
+                RentalHash Validado
+              </span>
+              <div className="text-xl sm:text-2xl font-black text-blue-900">
+                USDT {totalRentalHashValidado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <p className="text-[11px] text-blue-600 mt-1">
+                Comprovantes conferidos e validados com OK
+              </p>
+            </div>
+
+            {/* Total Hashsell Validado */}
+            <div className="p-4 rounded-2xl bg-purple-50/80 border border-purple-200">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-purple-700 block mb-1">
+                Hashsell Validado
+              </span>
+              <div className="text-xl sm:text-2xl font-black text-purple-900">
+                USDT {totalHashsellValidado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <p className="text-[11px] text-purple-600 mt-1">
+                Comprovantes conferidos e validados com OK
+              </p>
+            </div>
+
+            {/* Pendentes de Validação */}
+            <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700 block mb-1">
+                Aguardando Validação
+              </span>
+              <div className="text-xl sm:text-2xl font-black text-amber-900">
+                {totalPendentesValidacao} operadores
+              </div>
+              <p className="text-[11px] text-amber-700 mt-1">
+                Cadastros pendentes de conferência do print
+              </p>
+            </div>
+          </div>
+
+          {/* BARRA DE AÇÕES DA TABELA DE SALDOS */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                Conferência de Prints e Validação de Saldos
+              </h3>
+              <p className="text-xs text-slate-500">
+                Compare o print anexado com o valor declarado pelo operador. Ao clicar em <strong>"Validar (Dar OK)"</strong>, o saldo entra imediatamente no somatório oficial.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleExportCSV}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
+                title="Exportar para Excel / CSV"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Exportar Planilha CSV</span>
+              </button>
+            </div>
+          </div>
+
+          {/* LISTA / TABELA DE OPERADORES E SALDOS */}
+          {loadingSaldos ? (
+            <div className="p-12 text-center text-slate-400 text-xs">
+              <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-emerald-600" />
+              Carregando registros de saldos...
+            </div>
+          ) : registrosSaldos.length === 0 ? (
+            <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs">
+              Nenhum operador cadastrou saldos até o momento.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {registrosSaldos.map((reg) => (
+                <div
+                  key={reg.id}
+                  className={`p-5 rounded-2xl border transition-all ${
+                    reg.status === 'validado'
+                      ? 'bg-emerald-50/20 border-emerald-200'
+                      : reg.status === 'divergente'
+                      ? 'bg-red-50/20 border-red-200'
+                      : 'bg-white border-slate-200'
+                  }`}
+                >
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    {/* Dados do Operador */}
+                    <div className="space-y-1.5 max-w-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-900 text-sm">{reg.nome}</span>
+                        {reg.status === 'validado' ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                            <CheckCheck className="w-3 h-3" /> Auditado (OK)
+                          </span>
+                        ) : reg.status === 'divergente' ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3" /> Divergente
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
+                            Aguardando Validação
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                        {reg.email && (
+                          <span className="flex items-center gap-1">
+                            <Mail className="w-3.5 h-3.5 text-slate-400" />
+                            <span>{reg.email}</span>
+                          </span>
+                        )}
+                        {reg.whatsapp && (
+                          <a
+                            href={`https://wa.me/55${reg.whatsapp.replace(/\D/g, '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-1 text-emerald-700 font-semibold hover:underline"
+                          >
+                            <Phone className="w-3.5 h-3.5" />
+                            <span>{reg.whatsapp}</span>
+                          </a>
+                        )}
+                      </div>
+
+                      {reg.observacoes && (
+                        <p className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100 italic">
+                          "{reg.observacoes}"
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Bloco RentalHash */}
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 min-w-[220px] space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-blue-800 uppercase">
+                          RentalHash
+                        </span>
+                        {reg.validado_rentalhash ? (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded flex items-center gap-1">
+                            <Check className="w-2.5 h-2.5" /> Validado
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold text-slate-400">
+                            Não validado
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="text-base font-bold text-slate-900">
+                        {reg.moeda_rentalhash} {Number(reg.saldo_rentalhash).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-200">
+                        {reg.comprovante_rentalhash_url ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setActivePrintModal({
+                                url: reg.comprovante_rentalhash_url!,
+                                titulo: 'Print Comprovante RentalHash',
+                                operador: reg.nome,
+                                valor: `${reg.moeda_rentalhash} ${Number(reg.saldo_rentalhash).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+                                registroId: reg.id,
+                                tipo: 'rentalhash',
+                                validado: reg.validado_rentalhash,
+                              })
+                            }
+                            className="flex items-center gap-1 text-[11px] font-bold text-blue-700 hover:text-blue-900 bg-blue-50 px-2 py-1 rounded-lg border border-blue-200"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Ver Print</span>
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 italic">Sem anexo</span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleToggleValidacaoItem(reg.id, 'rentalhash', reg.validado_rentalhash)
+                          }
+                          className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                            reg.validado_rentalhash
+                              ? 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                              : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+                          }`}
+                        >
+                          {reg.validado_rentalhash ? 'Desfazer' : 'Dar OK'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Bloco Hashsell */}
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 min-w-[220px] space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-purple-800 uppercase">
+                          Hashsell
+                        </span>
+                        {reg.validado_hashsell ? (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded flex items-center gap-1">
+                            <Check className="w-2.5 h-2.5" /> Validado
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold text-slate-400">
+                            Não validado
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="text-base font-bold text-slate-900">
+                        {reg.moeda_hashsell} {Number(reg.saldo_hashsell).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-200">
+                        {reg.comprovante_hashsell_url ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setActivePrintModal({
+                                url: reg.comprovante_hashsell_url!,
+                                titulo: 'Print Comprovante Hashsell',
+                                operador: reg.nome,
+                                valor: `${reg.moeda_hashsell} ${Number(reg.saldo_hashsell).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+                                registroId: reg.id,
+                                tipo: 'hashsell',
+                                validado: reg.validado_hashsell,
+                              })
+                            }
+                            className="flex items-center gap-1 text-[11px] font-bold text-purple-700 hover:text-purple-900 bg-purple-50 px-2 py-1 rounded-lg border border-purple-200"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Ver Print</span>
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 italic">Sem anexo</span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleToggleValidacaoItem(reg.id, 'hashsell', reg.validado_hashsell)
+                          }
+                          className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                            reg.validado_hashsell
+                              ? 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                              : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+                          }`}
+                        >
+                          {reg.validado_hashsell ? 'Desfazer' : 'Dar OK'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Ações Globais do Operador */}
+                    <div className="flex flex-col gap-2 min-w-[130px] justify-center">
+                      <button
+                        type="button"
+                        onClick={() => handleValidarTudo(reg.id)}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors shadow-sm flex items-center justify-center gap-1"
+                        title="Validar ambos os saldos e dar OK completo"
+                      >
+                        <CheckCheck className="w-3.5 h-3.5" />
+                        <span>Validar Tudo</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleMarcarDivergente(reg.id)}
+                        className="px-3 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-[11px] font-medium transition-colors"
+                        title="Marcar que o print não confere"
+                      >
+                        Divergência
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ================================================================ */}
+      {/* MODAL DE ZOOM E VALIDAÇÃO DO PRINT                               */}
+      {/* ================================================================ */}
+      {activePrintModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+          <div
+            className="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] overflow-hidden shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header do Modal */}
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm sm:text-base">
+                  {activePrintModal.titulo}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Operador: <strong className="text-slate-700">{activePrintModal.operador}</strong> • Valor Informado:{' '}
+                  <strong className="text-emerald-700 font-bold">{activePrintModal.valor}</strong>
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActivePrintModal(null)}
+                className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-200 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Imagem em Zoom */}
+            <div className="flex-1 overflow-auto p-4 bg-slate-950 flex items-center justify-center">
+              <img
+                src={activePrintModal.url}
+                alt={activePrintModal.titulo}
+                className="max-h-[68vh] max-w-full object-contain rounded-lg shadow-lg"
+              />
+            </div>
+
+            {/* Footer do Modal com Botão de Validação Rápida */}
+            <div className="p-4 bg-white border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+              <div className="text-xs text-slate-500">
+                Conferência: certifique-se de que o número do print coincide com <strong>{activePrintModal.valor}</strong>.
+              </div>
+
+              <div className="flex items-center gap-2">
+                <a
+                  href={activePrintModal.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Abrir Original</span>
+                </a>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleToggleValidacaoItem(
+                      activePrintModal.registroId,
+                      activePrintModal.tipo,
+                      activePrintModal.validado
+                    );
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 ${
+                    activePrintModal.validado
+                      ? 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  }`}
+                >
+                  <CheckCheck className="w-4 h-4" />
+                  <span>{activePrintModal.validado ? 'Desfazer Validação' : 'Dar OK e Inserir na Somatória'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================ */}
+      {/* TAB 2: DEMANDAS & PAUTAS                                         */}
+      {/* ================================================================ */}
       {activeTab === 'moderacao' && (
         <div className="space-y-4">
           <div className="flex justify-between items-center">
@@ -579,7 +1166,9 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {/* TAB 2: PUBLICAR RESPOSTA RENTALHASH */}
+      {/* ================================================================ */}
+      {/* TAB 3: PUBLICAR RESPOSTA RENTALHASH                              */}
+      {/* ================================================================ */}
       {activeTab === 'resposta' && (
         <form onSubmit={handlePublishResposta} className="space-y-4 max-w-2xl">
           <h3 className="text-sm font-bold text-slate-900">
@@ -667,7 +1256,9 @@ export default function AdminPanel() {
         </form>
       )}
 
-      {/* TAB 3: COMUNICADOS DA COMITIVA */}
+      {/* ================================================================ */}
+      {/* TAB 4: COMUNICADOS DA COMITIVA                                   */}
+      {/* ================================================================ */}
       {activeTab === 'comunicado' && (
         <form onSubmit={handlePublishComunicado} className="space-y-4 max-w-2xl">
           <h3 className="text-sm font-bold text-slate-900">
@@ -737,7 +1328,9 @@ export default function AdminPanel() {
         </form>
       )}
 
-      {/* TAB 4: GESTÃO DE ADMINISTRADORES */}
+      {/* ================================================================ */}
+      {/* TAB 5: GESTÃO DE ADMINISTRADORES                                 */}
+      {/* ================================================================ */}
       {activeTab === 'administradores' && (
         <div className="space-y-8 max-w-4xl">
           {/* Card com Link Secreto para Convites */}
@@ -754,7 +1347,7 @@ export default function AdminPanel() {
                   Membros cadastrados aparecem nesta lista para você promover a Administrador.
                 </p>
                 <div className="mt-2 text-xs font-mono bg-black/40 px-3 py-1.5 rounded-lg border border-white/10 inline-block text-emerald-300">
-                  /cadastro-comitiva <span className="text-slate-400 font-sans ml-2">(Código: SPREADHUNTER2026)</span>
+                  /cadastro-comitiva <span className="text-slate-400 font-sans ml-2">(Código confidencial: SPREADHUNTER2026)</span>
                 </div>
               </div>
 
@@ -872,7 +1465,7 @@ export default function AdminPanel() {
 
             {administradores.length === 0 ? (
               <div className="p-8 text-center text-slate-400 text-xs border border-dashed rounded-xl">
-                Nenhum administrador retornado da tabela. Execute o comando SQL no Supabase para registrar o admin inicial.
+                Nenhum administrador retornado da tabela.
               </div>
             ) : (
               <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">

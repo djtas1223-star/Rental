@@ -1,25 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import Link from 'next/link';
-import { 
-  ChevronLeft, 
-  ShieldCheck
-} from 'lucide-react';
-import { Categoria } from '@/types/database';
-import { fetchCategorias } from '@/lib/supabase/api';
-import NewQuestionForm from '@/components/NewQuestionForm';
+import { ChevronLeft, ShieldCheck, DollarSign } from 'lucide-react';
+import RegistroSaldoForm from '@/components/RegistroSaldoForm';
 
 export default function NovaDemandaPage() {
-  const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchCategorias()
-      .then((data) => setCategorias(data))
-      .finally(() => setLoading(false));
-  }, []);
-
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       {/* Navegação de Retorno */}
@@ -33,26 +19,24 @@ export default function NovaDemandaPage() {
         </Link>
       </div>
 
-      {/* Orientações para Envio de Demanda */}
+      {/* Orientações para Registro de Saldo */}
       <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-6 sm:p-8 text-white shadow-md border border-slate-700/60">
         <div className="max-w-2xl space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-semibold">
             <ShieldCheck className="w-4 h-4" />
-            <span>Processo Oficial de Coleta de Demandas</span>
+            <span>Censo Coletivo de Saldos Retidos</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-            Registrar Nova Demanda ou Sugestão
+            Registrar Saldo Pendente (RentalHash & Hashsell)
           </h1>
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            Sua Sugestão será analisada pela comitiva e consolidada em pautas de reunião formal com a diretoria da RentalHash.
+            Informe seus dados e anexe os prints dos painéis comprovando os valores retidos. Seus dados serão conferidos e validados pela comitiva para inclusão no somatório oficial e na pauta de cobrança formal perante as empresas.
           </p>
         </div>
       </div>
 
-      {/* Formulário Simplificado */}
-      <NewQuestionForm
-        categorias={categorias}
-      />
+      {/* Formulário com Upload de Comprovantes */}
+      <RegistroSaldoForm />
     </div>
   );
 }

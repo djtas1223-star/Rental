@@ -8,6 +8,7 @@ import {
   SimilarQuestionResult,
   StatusDemanda,
   UsuarioAdministrador,
+  RegistroSaldo,
   LogAuditoria
 } from '@/types/database';
 
@@ -642,5 +643,160 @@ export async function registrarLogAuditoria(log: Partial<LogAuditoria>) {
     ]);
   } catch {
     // Silently continue for audit logs
+  }
+}
+
+// ----------------------------------------------------------------------
+// REGISTRO DE SALDOS PENDENTES (RENTALHASH & HASHSELL)
+// ----------------------------------------------------------------------
+
+export async function submitRegistroSaldo(payload: {
+  nome: string;
+  email?: string;
+  whatsapp?: string;
+  saldo_rentalhash: number;
+  moeda_rentalhash: string;
+  comprovante_rentalhash_url?: string;
+  saldo_hashsell: number;
+  moeda_hashsell: string;
+  comprovante_hashsell_url?: string;
+  observacoes?: string;
+}): Promise<{ success: boolean; data?: RegistroSaldo; error?: string }> {
+  try {
+    const { data, error } = await supabase
+      .from('registros_saldos')
+      .insert([
+        {
+          nome: payload.nome.trim(),
+          email: payload.email?.trim() || null,
+          whatsapp: payload.whatsapp?.trim() || null,
+          saldo_rentalhash: payload.saldo_rentalhash || 0,
+          moeda_rentalhash: payload.moeda_rentalhash || 'USDT',
+          comprovante_rentalhash_url: payload.comprovante_rentalhash_url || null,
+          validado_rentalhash: false,
+          saldo_hashsell: payload.saldo_hashsell || 0,
+          moeda_hashsell: payload.moeda_hashsell || 'USDT',
+          comprovante_hashsell_url: payload.comprovante_hashsell_url || null,
+          validado_hashsell: false,
+          observacoes: payload.observacoes?.trim() || null,
+          status: 'pendente'
+        }
+      ])
+      .select()
+      .single();
+
+    if (error) {
+      // Fallback para questionamentos se a tabela registros_saldos ainda não foi criada no SQL editor
+      if (error.code === 'PGRST205' || error.message?.includes('registros_saldos')) {
+        await supabase.from('questionamentos').insert([
+          {
+            titulo: `[SALDO OPERADOR] ${payload.nome.trim()}`,
+            descricao: JSON.stringify(payload),
+            autor_nome: payload.nome.trim(),
+            autor_email: payload.email?.trim() || null,
+            status: 'pendente'
+          }
+        ]);
+        return { success: true };
+      }
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data: data as RegistroSaldo };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Falha ao salvar registro de saldo';
+    return { success: false, error: message };
+  }
+}
+
+export async function fetchRegistrosSaldos(): Promise<RegistroSaldo[]> {
+  try {
+    const { data, error } = await supabase
+      .from('registros_saldos')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error || !data) {
+      // Tenta fallback se estiver armazenado em questionamentos
+      const { data: qData } = await supabase
+        .from('questionamentos')
+        .select('*')
+        .ilike('titulo', '[SALDO OPERADOR]%')
+        .order('created_at', { ascending: false });
+
+      if (qData && qData.length > 0) {
+        return qData.map(q => {
+          try {
+            const parsed = JSON.parse(q.descricao);
+            return {
+              id: q.id,
+              nome: parsed.nome || q.autor_nome,
+              email: parsed.email || q.autor_email,
+              whatsapp: parsed.whatsapp || '',
+              saldo_rentalhash: parsed.saldo_rentalhash || 0,
+              moeda_rentalhash: parsed.moeda_rentalhash || 'USDT',
+              comprovante_rentalhash_url: parsed.comprovante_rentalhash_url,
+              validado_rentalhash: q.status === 'concluido' || q.status === 'respondido',
+              saldo_hashsell: parsed.saldo_hashsell || 0,
+              moeda_hashsell: parsed.moeda_hashsell || 'USDT',
+              comprovante_hashsell_url: parsed.comprovante_hashsell_url,
+              validado_hashsell: q.status === 'concluido' || q.status === 'respondido',
+              observacoes: parsed.observacoes,
+              status: q.status === 'concluido' ? 'validado' : 'pendente',
+              created_at: q.created_at,
+              updated_at: q.updated_at
+            } as RegistroSaldo;
+          } catch {
+            return null;
+          }
+        }).filter(Boolean) as RegistroSaldo[];
+      }
+      return [];
+    }
+
+    return data as RegistroSaldo[];
+  } catch {
+    return [];
+  }
+}
+
+export async function adminValidarRegistroSaldo(
+  id: string,
+  updates: {
+    validado_rentalhash?: boolean;
+    validado_hashsell?: boolean;
+    status?: 'pendente' | 'validado' | 'divergente' | 'rejeitado';
+    adminNome?: string;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const payload: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+      validado_por: updates.adminNome || 'Administrador',
+      validado_em: new Date().toISOString(),
+    };
+
+    if (updates.validado_rentalhash !== undefined) payload.validado_rentalhash = updates.validado_rentalhash;
+    if (updates.validado_hashsell !== undefined) payload.validado_hashsell = updates.validado_hashsell;
+    if (updates.status !== undefined) payload.status = updates.status;
+
+    const { error } = await supabase
+      .from('registros_saldos')
+      .update(payload)
+      .eq('id', id);
+
+    if (error) return { success: false, error: error.message };
+
+    await registrarLogAuditoria({
+      acao: 'VALIDAR_SALDO',
+      entidade: 'registros_saldos',
+      entidade_id: id,
+      detalhes: updates
+    });
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Falha ao atualizar validação';
+    return { success: false, error: msg };
   }
 }
