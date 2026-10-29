@@ -69,6 +69,7 @@ export async function fetchQuestionamentos(params?: {
         respostas_rentalhash(*),
         historico_atualizacoes(*)
       `)
+      .not('titulo', 'ilike', '[SALDO OPERADOR]%')
       .order('apoios_count', { ascending: false })
       .order('created_at', { ascending: false });
 
@@ -818,7 +819,9 @@ export async function submitRegistroSaldo(payload: {
   observacoes?: string;
 }): Promise<{ success: boolean; data?: RegistroSaldo; error?: string }> {
   try {
-    const { data, error } = await supabase
+    // 1. Tenta gravar diretamente na tabela oficial registros_saldos
+    // Obs: Não chamamos .select() pois o usuário público anônimo tem permissão apenas de INSERT (RLS)
+    const { error } = await supabase
       .from('registros_saldos')
       .insert([
         {
@@ -836,28 +839,28 @@ export async function submitRegistroSaldo(payload: {
           observacoes: payload.observacoes?.trim() || null,
           status: 'pendente'
         }
-      ])
-      .select()
-      .single();
+      ]);
 
     if (error) {
+      console.warn('Fallback ativado - gravando saldo em questionamentos:', error.message);
       // Fallback para questionamentos se a tabela registros_saldos ainda não foi criada no SQL editor
-      if (error.code === 'PGRST205' || error.message?.includes('registros_saldos')) {
-        await supabase.from('questionamentos').insert([
-          {
-            titulo: `[SALDO OPERADOR] ${payload.nome.trim()}`,
-            descricao: JSON.stringify(payload),
-            autor_nome: payload.nome.trim(),
-            autor_email: payload.email?.trim() || null,
-            status: 'pendente'
-          }
-        ]);
-        return { success: true };
+      const { error: fbErr } = await supabase.from('questionamentos').insert([
+        {
+          titulo: `[SALDO OPERADOR] ${payload.nome.trim()}`,
+          descricao: JSON.stringify(payload),
+          autor_nome: payload.nome.trim(),
+          autor_email: payload.email?.trim() || null,
+          status: 'pendente'
+        }
+      ]);
+
+      if (fbErr) {
+        return { success: false, error: fbErr.message };
       }
-      return { success: false, error: error.message };
+      return { success: true };
     }
 
-    return { success: true, data: data as RegistroSaldo };
+    return { success: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Falha ao salvar registro de saldo';
     return { success: false, error: message };
@@ -866,51 +869,62 @@ export async function submitRegistroSaldo(payload: {
 
 export async function fetchRegistrosSaldos(): Promise<RegistroSaldo[]> {
   try {
+    let registros: RegistroSaldo[] = [];
+
+    // 1. Carrega da tabela principal registros_saldos
     const { data, error } = await supabase
       .from('registros_saldos')
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error || !data) {
-      // Tenta fallback se estiver armazenado em questionamentos
-      const { data: qData } = await supabase
-        .from('questionamentos')
-        .select('*')
-        .ilike('titulo', '[SALDO OPERADOR]%')
-        .order('created_at', { ascending: false });
-
-      if (qData && qData.length > 0) {
-        return qData.map(q => {
-          try {
-            const parsed = JSON.parse(q.descricao);
-            return {
-              id: q.id,
-              nome: parsed.nome || q.autor_nome,
-              email: parsed.email || q.autor_email,
-              whatsapp: parsed.whatsapp || '',
-              saldo_rentalhash: parsed.saldo_rentalhash || 0,
-              moeda_rentalhash: parsed.moeda_rentalhash || 'USDT',
-              comprovante_rentalhash_url: parsed.comprovante_rentalhash_url,
-              validado_rentalhash: q.status === 'concluido' || q.status === 'respondido',
-              saldo_hashsell: parsed.saldo_hashsell || 0,
-              moeda_hashsell: parsed.moeda_hashsell || 'USDT',
-              comprovante_hashsell_url: parsed.comprovante_hashsell_url,
-              validado_hashsell: q.status === 'concluido' || q.status === 'respondido',
-              observacoes: parsed.observacoes,
-              status: q.status === 'concluido' ? 'validado' : 'pendente',
-              created_at: q.created_at,
-              updated_at: q.updated_at
-            } as RegistroSaldo;
-          } catch {
-            return null;
-          }
-        }).filter(Boolean) as RegistroSaldo[];
-      }
-      return [];
+    if (!error && data && data.length > 0) {
+      registros = data as RegistroSaldo[];
     }
 
-    return data as RegistroSaldo[];
-  } catch {
+    // 2. Carrega e mescla também registros que estão como [SALDO OPERADOR] em questionamentos
+    const { data: qData } = await supabase
+      .from('questionamentos')
+      .select('*')
+      .ilike('titulo', '[SALDO OPERADOR]%')
+      .order('created_at', { ascending: false });
+
+    if (qData && qData.length > 0) {
+      const existingIds = new Set(registros.map(r => r.id));
+      const fallbackList: RegistroSaldo[] = [];
+
+      for (const q of qData) {
+        if (existingIds.has(q.id)) continue;
+        try {
+          const parsed = JSON.parse(q.descricao);
+          fallbackList.push({
+            id: q.id,
+            nome: parsed.nome || q.autor_nome,
+            email: parsed.email || q.autor_email || '',
+            whatsapp: parsed.whatsapp || '',
+            saldo_rentalhash: parsed.saldo_rentalhash || 0,
+            moeda_rentalhash: parsed.moeda_rentalhash || 'USDT',
+            comprovante_rentalhash_url: parsed.comprovante_rentalhash_url,
+            validado_rentalhash: q.status === 'concluido' || q.status === 'respondido',
+            saldo_hashsell: parsed.saldo_hashsell || 0,
+            moeda_hashsell: parsed.moeda_hashsell || 'USDT',
+            comprovante_hashsell_url: parsed.comprovante_hashsell_url,
+            validado_hashsell: q.status === 'concluido' || q.status === 'respondido',
+            observacoes: parsed.observacoes,
+            status: q.status === 'concluido' ? 'validado' : (q.status === 'rejeitado' ? 'rejeitado' : 'pendente'),
+            created_at: q.created_at,
+            updated_at: q.updated_at
+          } as RegistroSaldo);
+        } catch {
+          // formato não json
+        }
+      }
+
+      registros = [...registros, ...fallbackList];
+    }
+
+    return registros;
+  } catch (err) {
+    console.warn('Erro ao carregar registros de saldo:', err);
     return [];
   }
 }
@@ -935,29 +949,22 @@ export async function adminValidarRegistroSaldo(
     if (updates.validado_hashsell !== undefined) payload.validado_hashsell = updates.validado_hashsell;
     if (updates.status !== undefined) payload.status = updates.status;
 
-    const { error } = await supabase
+    await supabase
       .from('registros_saldos')
       .update(payload)
       .eq('id', id);
 
-    if (error) {
-      // Fallback resiliente para questionamentos se a tabela registros_saldos ainda não foi criada no Supabase
-      if (error.code === 'PGRST205' || error.message?.includes('registros_saldos')) {
-        let qStatus: any = 'pendente';
-        if (updates.status === 'validado' || (updates.validado_rentalhash && updates.validado_hashsell)) {
-          qStatus = 'concluido';
-        } else if (updates.status === 'divergente' || updates.status === 'rejeitado') {
-          qStatus = 'rejeitado';
-        }
-        await supabase
-          .from('questionamentos')
-          .update({ status: qStatus, updated_at: new Date().toISOString() })
-          .eq('id', id);
-
-        return { success: true };
-      }
-      return { success: false, error: error.message };
+    // Se estiver em questionamentos, atualiza lá também
+    let qStatus: any = 'pendente';
+    if (updates.status === 'validado' || (updates.validado_rentalhash && updates.validado_hashsell)) {
+      qStatus = 'concluido';
+    } else if (updates.status === 'divergente' || updates.status === 'rejeitado') {
+      qStatus = 'rejeitado';
     }
+    await supabase
+      .from('questionamentos')
+      .update({ status: qStatus, updated_at: new Date().toISOString() })
+      .eq('id', id);
 
     await registrarLogAuditoria({
       acao: 'VALIDAR_SALDO',
@@ -993,26 +1000,21 @@ export async function adminUpdateRegistroSaldo(
       updated_at: new Date().toISOString()
     };
 
-    const { error } = await supabase
+    await supabase
       .from('registros_saldos')
       .update(updateData)
       .eq('id', id);
 
-    if (error) {
-      if (error.code === 'PGRST205' || error.message?.includes('registros_saldos')) {
-        await supabase
-          .from('questionamentos')
-          .update({
-            titulo: payload.nome ? `[SALDO OPERADOR] ${payload.nome}` : undefined,
-            status: payload.status === 'validado' ? 'concluido' : payload.status === 'divergente' ? 'rejeitado' : 'pendente',
-            descricao: JSON.stringify(payload),
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', id);
-        return { success: true };
-      }
-      return { success: false, error: error.message };
-    }
+    // Atualiza também se estiver armazenado em questionamentos
+    await supabase
+      .from('questionamentos')
+      .update({
+        titulo: payload.nome ? `[SALDO OPERADOR] ${payload.nome}` : undefined,
+        status: payload.status === 'validado' ? 'concluido' : payload.status === 'divergente' ? 'rejeitado' : 'pendente',
+        descricao: JSON.stringify(payload),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
 
     await registrarLogAuditoria({
       acao: 'UPDATE_REGISTRO_SALDO',
@@ -1032,21 +1034,15 @@ export async function adminDeleteRegistroSaldo(
   id: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { error } = await supabase
+    await supabase
       .from('registros_saldos')
       .delete()
       .eq('id', id);
 
-    if (error) {
-      if (error.code === 'PGRST205' || error.message?.includes('registros_saldos')) {
-        await supabase
-          .from('questionamentos')
-          .delete()
-          .eq('id', id);
-        return { success: true };
-      }
-      return { success: false, error: error.message };
-    }
+    await supabase
+      .from('questionamentos')
+      .delete()
+      .eq('id', id);
 
     await registrarLogAuditoria({
       acao: 'DELETE_REGISTRO_SALDO',
