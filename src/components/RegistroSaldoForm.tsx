@@ -12,8 +12,7 @@ import {
   Building2, 
   DollarSign, 
   User, 
-  Mail, 
-  Phone,
+  EyeOff,
   Image as ImageIcon
 } from 'lucide-react';
 import { submitRegistroSaldo } from '@/lib/supabase/api';
@@ -26,8 +25,7 @@ interface RegistroSaldoFormProps {
 export default function RegistroSaldoForm({ onSuccess }: RegistroSaldoFormProps) {
   // Dados do operador
   const [nome, setNome] = useState('');
-  const [email, setEmail] = useState('');
-  const [whatsapp, setWhatsapp] = useState('');
+  const [isAnonimo, setIsAnonimo] = useState(false);
 
   // RentalHash
   const [saldoRental, setSaldoRental] = useState('');
@@ -87,8 +85,10 @@ export default function RegistroSaldoForm({ onSuccess }: RegistroSaldoFormProps)
     e.preventDefault();
     setErrorMessage(null);
 
-    if (!nome.trim()) {
-      setErrorMessage('Por favor, informe seu nome completo.');
+    const finalNome = isAnonimo ? 'Operador Anônimo' : nome.trim();
+
+    if (!finalNome) {
+      setErrorMessage('Por favor, informe seu nome ou apelido, ou marque a opção "Marcar como anônimo".');
       return;
     }
 
@@ -121,9 +121,7 @@ export default function RegistroSaldoForm({ onSuccess }: RegistroSaldoFormProps)
       setUploadStep('Gravando dados na comitiva...');
 
       const res = await submitRegistroSaldo({
-        nome,
-        email: email || undefined,
-        whatsapp: whatsapp || undefined,
+        nome: finalNome,
         saldo_rentalhash: valorRentalNum,
         moeda_rentalhash: moedaRental,
         comprovante_rentalhash_url: printRentalUrl || undefined,
@@ -181,8 +179,7 @@ export default function RegistroSaldoForm({ onSuccess }: RegistroSaldoFormProps)
             onClick={() => {
               setSuccess(false);
               setNome('');
-              setEmail('');
-              setWhatsapp('');
+              setIsAnonimo(false);
               setSaldoRental('');
               setSaldoHashsell('');
               setObservacoes('');
@@ -206,10 +203,10 @@ export default function RegistroSaldoForm({ onSuccess }: RegistroSaldoFormProps)
         </div>
         <div>
           <h2 className="text-xl font-bold text-slate-900">
-            Cadastro de Saldos Pendentes & Comprovantes
+            Cadastro de Saldos Pendentes
           </h2>
           <p className="text-xs sm:text-sm text-slate-500">
-            Insira os valores retidos e anexe os prints dos painéis para validação pela comitiva.
+            Informe seus saldos retidos para consolidação coletiva pela comitiva. O anexo dos prints é opcional.
           </p>
         </div>
       </div>
@@ -225,71 +222,64 @@ export default function RegistroSaldoForm({ onSuccess }: RegistroSaldoFormProps)
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* SEÇÃO 1: DADOS PESSOAIS DO OPERADOR */}
-        <div className="space-y-4">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-            <User className="w-4 h-4 text-emerald-600" />
-            <span>Identificação do Operador</span>
-          </h3>
+        {/* SEÇÃO 1: IDENTIFICAÇÃO DO OPERADOR (NOME/APELIDO OU ANÔNIMO) */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+              <User className="w-4 h-4 text-emerald-600" />
+              <span>Nome ou Apelido</span>
+            </h3>
+
+            <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer select-none bg-slate-50 hover:bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg transition-colors">
+              <input
+                type="checkbox"
+                checked={isAnonimo}
+                onChange={(e) => {
+                  setIsAnonimo(e.target.checked);
+                  if (e.target.checked) {
+                    setNome('');
+                  }
+                }}
+                className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4 cursor-pointer"
+              />
+              <span className="text-emerald-700 font-semibold">Marcar como anônimo</span>
+            </label>
+          </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Nome Completo <span className="text-red-500">*</span>
-            </label>
             <div className="relative">
               <User className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
               <input
                 type="text"
-                required
-                value={nome}
+                disabled={isAnonimo}
+                value={isAnonimo ? 'Operador Anônimo' : nome}
                 onChange={(e) => setNome(e.target.value)}
-                placeholder="Seu nome completo ou razão social"
-                className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                placeholder={isAnonimo ? 'Envio será anônimo' : 'Digite seu nome ou apelido'}
+                required={!isAnonimo}
+                className={`w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500 outline-none transition-all ${
+                  isAnonimo ? 'bg-slate-100 text-slate-500 cursor-not-allowed font-medium' : 'bg-white text-slate-900'
+                }`}
               />
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Email de Contato <span className="text-slate-400 font-normal">(Opcional)</span>
-              </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="seu-email@exemplo.com (opcional)"
-                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                WhatsApp / Telefone para Contato <span className="text-slate-400 font-normal">(Opcional)</span>
-              </label>
-              <div className="relative">
-                <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                <input
-                  type="text"
-                  value={whatsapp}
-                  onChange={(e) => setWhatsapp(e.target.value)}
-                  placeholder="(DDD) 99999-9999 (opcional)"
-                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-                />
-              </div>
-            </div>
+            {isAnonimo ? (
+              <p className="text-[11px] text-emerald-600 mt-1.5 flex items-center gap-1 font-medium">
+                <EyeOff className="w-3.5 h-3.5" />
+                Opção anônima selecionada: sua identidade não será registrada.
+              </p>
+            ) : (
+              <p className="text-[11px] text-slate-400 mt-1.5">
+                Informe como prefere ser identificado (nome, primeiro nome ou apelido).
+              </p>
+            )}
           </div>
         </div>
 
-        {/* SEÇÃO 2: SALDO E PRINT RENTALHASH */}
+        {/* SEÇÃO 2: VALOR DO SALDO RENTALHASH (USDT) */}
         <div className="pt-2 border-t border-slate-100 space-y-4">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
             <h3 className="text-sm font-bold text-slate-900">
-              1. Plataforma RentalHash
+              Valor do saldo RentalHash (USDT)
             </h3>
           </div>
 
@@ -297,7 +287,7 @@ export default function RegistroSaldoForm({ onSuccess }: RegistroSaldoFormProps)
             {/* Valor */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Saldo Pendente RentalHash
+                Saldo RentalHash (USDT)
               </label>
               <div className="flex rounded-xl border border-slate-200 overflow-hidden focus-within:ring-2 focus-within:ring-emerald-500">
                 <select
@@ -318,15 +308,20 @@ export default function RegistroSaldoForm({ onSuccess }: RegistroSaldoFormProps)
                 />
               </div>
               <p className="text-[11px] text-slate-400 mt-1">
-                Valor total retido aguardando repasse/saque.
+                Saldo pendente aguardando repasse/saque.
               </p>
             </div>
 
-            {/* Print Anexo */}
+            {/* Print Anexo (Opcional) */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Print do Painel RentalHash (Até 1 imagem)
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Print do Painel RentalHash
+                </label>
+                <span className="text-[11px] text-emerald-600 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md">
+                  Opcional
+                </span>
+              </div>
 
               {printRentalPreview ? (
                 <div className="relative border border-slate-200 rounded-xl p-2 bg-slate-50 flex items-center justify-between gap-3">
@@ -356,7 +351,7 @@ export default function RegistroSaldoForm({ onSuccess }: RegistroSaldoFormProps)
                 >
                   <Upload className="w-5 h-5 text-slate-400 mx-auto mb-1" />
                   <span className="text-xs font-semibold text-emerald-700">
-                    Clique para anexar o print
+                    Anexar print do painel (Opcional)
                   </span>
                   <p className="text-[10px] text-slate-400 mt-0.5">
                     PNG, JPG ou JPEG do extrato da RentalHash
@@ -374,12 +369,12 @@ export default function RegistroSaldoForm({ onSuccess }: RegistroSaldoFormProps)
           </div>
         </div>
 
-        {/* SEÇÃO 3: SALDO E PRINT HASHSELL */}
+        {/* SEÇÃO 3: VALOR DO SALDO HASHSELL (USDT) */}
         <div className="pt-2 border-t border-slate-100 space-y-4">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-purple-600" />
             <h3 className="text-sm font-bold text-slate-900">
-              2. Plataforma Hashsell
+              Valor do saldo Hashsell (USDT)
             </h3>
           </div>
 
@@ -387,7 +382,7 @@ export default function RegistroSaldoForm({ onSuccess }: RegistroSaldoFormProps)
             {/* Valor */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Saldo Pendente Hashsell
+                Saldo Hashsell (USDT)
               </label>
               <div className="flex rounded-xl border border-slate-200 overflow-hidden focus-within:ring-2 focus-within:ring-emerald-500">
                 <select
@@ -408,15 +403,20 @@ export default function RegistroSaldoForm({ onSuccess }: RegistroSaldoFormProps)
                 />
               </div>
               <p className="text-[11px] text-slate-400 mt-1">
-                Valor total retido na plataforma Hashsell.
+                Saldo pendente aguardando repasse/saque.
               </p>
             </div>
 
-            {/* Print Anexo */}
+            {/* Print Anexo (Opcional) */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Print do Painel Hashsell (Até 1 imagem)
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Print do Painel Hashsell
+                </label>
+                <span className="text-[11px] text-emerald-600 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md">
+                  Opcional
+                </span>
+              </div>
 
               {printHashsellPreview ? (
                 <div className="relative border border-slate-200 rounded-xl p-2 bg-slate-50 flex items-center justify-between gap-3">
@@ -446,7 +446,7 @@ export default function RegistroSaldoForm({ onSuccess }: RegistroSaldoFormProps)
                 >
                   <Upload className="w-5 h-5 text-slate-400 mx-auto mb-1" />
                   <span className="text-xs font-semibold text-emerald-700">
-                    Clique para anexar o print
+                    Anexar print do painel (Opcional)
                   </span>
                   <p className="text-[10px] text-slate-400 mt-0.5">
                     PNG, JPG ou JPEG do extrato da Hashsell
